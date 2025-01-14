@@ -131,7 +131,7 @@ def on_task_complete_action(business_event, **kwargs):
                     group=group_individual_head.group,
                     benefit_plan_id=data['task']['json_ext']['benefit_plan_id'],
                     status=data['task']['json_ext']['beneficiary_status'],
-                    json_ext=head_individual.json_ext,
+                    json_ext=group_individual_head.group.json_ext,
                     user_created=user,
                     user_updated=user,
                     uuid=uuid.uuid4(),

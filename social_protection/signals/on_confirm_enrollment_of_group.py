@@ -59,7 +59,7 @@ def on_confirm_enrollment_of_group(**kwargs):
             source = IndividualDataSource(
                 upload=upload,
                 individual=group_individual.individual,
-                json_ext=group_individual.individual.json_ext,
+                json_ext=group_individual.group.json_ext,
                 validations={},
                 user_created=user,
                 user_updated=user,
@@ -94,7 +94,7 @@ def on_confirm_enrollment_of_group(**kwargs):
                 group=group,
                 benefit_plan_id=benefit_plan_id,
                 status=status,
-                json_ext=head_group_individual.individual.json_ext
+                json_ext=group.json_ext
             )
             try:
                 group_beneficiary.save(username=user.username)
