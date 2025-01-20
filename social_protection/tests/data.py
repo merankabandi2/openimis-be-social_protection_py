@@ -128,7 +128,7 @@ service_update_payload = {
     "code": "update",
     "name": "example_update",
     "max_beneficiaries": 0,
-    "ceiling_per_beneficiaryd": "0.00",
+    "ceiling_per_beneficiary": "0.00",
     "beneficiary_data_schema": {
         "$schema": "https://json-schema.org/draft/2019-09/schema"
     },
@@ -142,7 +142,7 @@ service_beneficiary_add_payload = {
     "date_valid_to": "2023-12-31",
 }
 
-service_beneficiary_update_payload = {
+service_beneficiary_update_status_active_payload = {
     "status": "ACTIVE",
     "date_valid_from": "2023-01-01",
     "date_valid_to": "2023-12-31",
