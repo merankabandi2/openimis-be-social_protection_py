@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     ],
     "social_protection_masking_enabled": True,
     "enable_python_workflows": True,
+    "default_beneficiary_status": "POTENTIAL",
 }
 
 
@@ -93,6 +94,8 @@ class SocialProtectionConfig(AppConfig):
     beneficiary_mask_fields = None
     group_beneficiary_mask_fields = None
     social_protection_masking_enabled = None
+
+    default_beneficiary_status = None
 
     def ready(self):
         from core.models import ModuleConfiguration

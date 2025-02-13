@@ -23,7 +23,7 @@ class BenefitPlan(core_models.HistoryBusinessModel):
 
     code = models.CharField(max_length=8, null=False)
     name = models.CharField(max_length=255, null=False)
-    max_beneficiaries = models.SmallIntegerField()
+    max_beneficiaries = models.SmallIntegerField(null=True, blank=True)
     ceiling_per_beneficiary = models.DecimalField(
         max_digits=18, decimal_places=2, blank=True, null=True,
     )
