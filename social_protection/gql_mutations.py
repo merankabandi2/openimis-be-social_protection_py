@@ -154,6 +154,8 @@ class UpdateBenefitPlanMutation(BaseHistoryModelUpdateMutationMixin, BaseMutatio
 
         service = BenefitPlanService(user)
         if SocialProtectionConfig.gql_check_benefit_plan_update:
+            if 'max_beneficiaries' not in data:
+                data['max_beneficiaries'] = None
             res = service.create_update_task(data)
         else:
             res = service.update(data)
