@@ -32,6 +32,8 @@ DECLARE
     failing_entries_first_name UUID[];
     failing_entries_last_name UUID[];
     failing_entries_dob UUID[];
+    total_entries INT;
+    total_valid_entries INT;
 BEGIN
     -- Check if all required fields are present in the entries
     SELECT ARRAY_AGG("UUID") INTO failing_entries_first_name
@@ -72,12 +74,24 @@ BEGIN
         WITH new_entry AS (
             INSERT INTO individual_individual(
                 "UUID", "isDeleted", version, "UserCreatedUUID", "UserUpdatedUUID",
-                "Json_ext", first_name, last_name, dob
+                "Json_ext", first_name, last_name, dob, location_id
             )
             SELECT gen_random_uuid(), false, 1, userUUID, userUUID,
-                   "Json_ext", "Json_ext"->>'first_name', "Json_ext" ->> 'last_name', to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD')
-            FROM individual_individualdatasource
-            WHERE upload_id = current_upload_id AND individual_id IS NULL AND "isDeleted" = False AND validations ->> 'validation_errors' = '[]'
+                   "Json_ext",
+                   "Json_ext"->>'first_name',
+                   "Json_ext" ->> 'last_name',
+                   to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD'),
+                   loc."LocationId"
+            FROM individual_individualdatasource AS ds
+            LEFT JOIN "tblLocations" AS loc
+                    ON loc."LocationName" = ds."Json_ext"->>'location_name'
+                    AND loc."LocationCode" = ds."Json_ext"->>'location_code'
+                    AND loc."LocationType"='V'
+                    AND loc."ValidityTo" IS NULL
+            WHERE ds.upload_id = current_upload_id
+                AND ds.individual_id IS NULL 
+                AND ds."isDeleted" = False 
+                AND ds.validations ->> 'validation_errors' = '[]'
             RETURNING "UUID", "Json_ext"
         )
         UPDATE individual_individualdatasource
@@ -97,25 +111,34 @@ BEGIN
         WHERE iids.upload_id=current_upload_id and iids."isDeleted"=false
         returning "UUID")
         
+        -- Calculate counts of valid and total entries
+        SELECT count(*) INTO total_valid_entries
+        FROM individual_individualdatasource
+        WHERE upload_id = current_upload_id
+          AND "isDeleted" = FALSE
+          AND COALESCE(validations ->> 'validation_errors', '[]') = '[]';
+        SELECT count(*) INTO total_entries
+        FROM individual_individualdatasource
+        WHERE upload_id = current_upload_id
+          AND "isDeleted" = FALSE;
+        
         -- Change status to SUCCESS if no invalid items, change to PARTIAL_SUCCESS otherwise 
             UPDATE individual_individualdatasourceupload
             SET 
                 status = CASE
-                    WHEN (
-                        SELECT count(*) 
-                        FROM individual_individualdatasource
-                        WHERE upload_id=current_upload_id
-                            AND "isDeleted"=FALSE
-                            AND validations ->> 'validation_errors' = '[]'
-                    ) = (
-                        SELECT count(*) 
-                        FROM individual_individualdatasource
-                        WHERE upload_id=current_upload_id
-                            AND "isDeleted"=FALSE
-                    ) THEN 'SUCCESS'
+                    WHEN total_valid_entries = total_entries THEN 'SUCCESS'
                     ELSE 'PARTIAL_SUCCESS'
                 END,
-                error = '{}'
+                error = CASE
+                    WHEN total_valid_entries < total_entries THEN jsonb_build_object(
+                        'error', 'Partial success due to some invalid entries',
+                        'timestamp', NOW()::text,
+                        'upload_id', current_upload_id::text,
+                        'total_valid_entries', total_valid_entries,
+                        'total_entries', total_entries
+                    )
+                    ELSE '{}'
+                END
             WHERE "UUID" = current_upload_id;
     END IF;
 EXCEPTION WHEN OTHERS THEN
@@ -185,12 +208,24 @@ BEGIN
         WITH new_entry AS (
             INSERT INTO individual_individual(
                 "UUID", "isDeleted", version, "UserCreatedUUID", "UserUpdatedUUID",
-                "Json_ext", first_name, last_name, dob
+                "Json_ext", first_name, last_name, dob, location_id
             )
             SELECT gen_random_uuid(), false, 1, userUUID, userUUID,
-                   "Json_ext", "Json_ext"->>'first_name', "Json_ext" ->> 'last_name', to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD')
-            FROM individual_individualdatasource
-            WHERE upload_id = current_upload_id AND individual_id IS NULL AND "isDeleted" = False AND validations ->> 'validation_errors' = '[]'
+                   "Json_ext",
+                   "Json_ext"->>'first_name',
+                   "Json_ext" ->> 'last_name',
+                   to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD'),
+                   loc."LocationId"
+            FROM individual_individualdatasource AS ds
+            LEFT JOIN "tblLocations" AS loc
+                    ON loc."LocationName" = ds."Json_ext"->>'location_name'
+                    AND loc."LocationCode" = ds."Json_ext"->>'location_code'
+                    AND loc."LocationType"='V'
+                    AND loc."ValidityTo" IS NULL
+            WHERE ds.upload_id = current_upload_id 
+                AND ds.individual_id IS NULL
+                AND ds."isDeleted" = False
+                AND ds.validations ->> 'validation_errors' = '[]'
             AND (accepted IS NULL OR "UUID" = ANY(accepted))
             RETURNING "UUID", "Json_ext"
         )

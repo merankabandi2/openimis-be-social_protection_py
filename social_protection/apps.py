@@ -48,6 +48,9 @@ DEFAULT_CONFIG = {
         'json_ext.beneficiary_data_source',
         'json_ext.educated_level'
     ],
+    "beneficiary_base_fields": [
+        'first_name', 'last_name', 'dob', 'location_name', 'location_code', 'id'
+    ],
     "social_protection_masking_enabled": True,
     "enable_python_workflows": True,
     "default_beneficiary_status": "POTENTIAL",
@@ -93,6 +96,7 @@ class SocialProtectionConfig(AppConfig):
     enable_maker_checker_logic_enrollment = None
     beneficiary_mask_fields = None
     group_beneficiary_mask_fields = None
+    beneficiary_base_fields = None
     social_protection_masking_enabled = None
 
     default_beneficiary_status = None
