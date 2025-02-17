@@ -98,9 +98,15 @@ BEGIN
             SET first_name = COALESCE(f."Json_ext"->>'first_name', first_name),
             last_name = COALESCE(f."Json_ext"->>'last_name', last_name),
             dob = COALESCE(to_date(f."Json_ext"->>'dob', 'YYYY-MM-DD'), dob),
+            location_id = loc."LocationId",
             "DateUpdated" = NOW(),
             "Json_ext" = f."Json_ext"
             FROM updated_beneficiaries f 
+            LEFT JOIN "tblLocations" AS loc
+                    ON loc."LocationName" = f."Json_ext"->>'location_name'
+                    AND loc."LocationCode" = f."Json_ext"->>'location_code'
+                    AND loc."LocationType"='V'
+                    AND loc."ValidityTo" IS NULL
             WHERE individual_individual."UUID" = f.individual_id 
             returning individual_individual."UUID", f.individualdatasource_id)
            

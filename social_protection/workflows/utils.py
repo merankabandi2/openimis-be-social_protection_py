@@ -11,6 +11,7 @@ from django.db import ProgrammingError, connection
 
 from core.models import User
 from individual.models import IndividualDataSource
+from social_protection.apps import SocialProtectionConfig
 from social_protection.models import BenefitPlan
 from social_protection.services import BeneficiaryImportService
 from social_protection.utils import load_dataframe
@@ -53,10 +54,13 @@ class BasePythonWorkflowExecutor(metaclass=ABCMeta):
         3. 'id' is field automatically added to DataFrame which is used for upload.
         4. If action is data upload then 'ID' unique identifier is required as well.
         """
+        
         df_headers = set(self.df.columns)
         schema = json.loads(self.schema) if isinstance(self.schema, str) else self.schema
         schema_properties = set(schema.get('properties', {}).keys())
-        required_headers = {'first_name', 'last_name', 'dob', 'id'}
+        schema_properties.update(['recipient_info', 'group_code', 'individual_role'])
+        required_headers = set(SocialProtectionConfig.beneficiary_base_fields)
+        
         if is_update:
             required_headers.add('ID')
 

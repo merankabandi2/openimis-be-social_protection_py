@@ -14,7 +14,7 @@ from individual.apps import IndividualConfig
 from individual.models import IndividualDataSource
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import BenefitPlan
-from social_protection.services import BeneficiaryImportService, GroupBeneficiaryImportService
+from social_protection.services import BeneficiaryImportService
 from workflow.services import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ def get_global_schema_fields(benefit_plan):
     schema = benefit_plan.beneficiary_data_schema if benefit_plan.beneficiary_data_schema \
         else json.loads(IndividualConfig.individual_schema)
     schema_properties = set(schema.get('properties', {}).keys())
-    schema_properties.update(['recipient_info', 'group_code'])
+    schema_properties.update(['recipient_info', 'individual_role', 'group_code'])
     return list(schema_properties)
 
 
@@ -34,7 +34,7 @@ def download_template_benefit_plan_file(request):
     benefit_plan_uuid = request.GET.get('benefit_plan_uuid')
     benefit_plan = BenefitPlan.objects.filter(id=benefit_plan_uuid, is_deleted=False).first()
     try:
-        base_fields = ['first_name', 'last_name', 'dob', 'id']
+        base_fields = SocialProtectionConfig.beneficiary_base_fields
         extra_fields = get_global_schema_fields(benefit_plan)
         all_fields = base_fields + extra_fields
         template_df = pd.DataFrame(columns=all_fields)
@@ -68,9 +68,6 @@ def import_beneficiaries(request):
             )
         else:
             raise NotImplementedError(_("cannot updload groups"))
-            result = GroupBeneficiaryImportService(user).import_beneficiaries(
-                import_file, benefit_plan, workflow, group_aggregation_column
-            )
         if not result.get('success'):
             raise ValueError('{}: {}'.format(result.get("message"), result.get("details")))
 

@@ -72,12 +72,23 @@ DO $$
           WITH new_entry AS (
             INSERT INTO individual_individual(
             "UUID", "isDeleted", version, "UserCreatedUUID", "UserUpdatedUUID",
-            "Json_ext", first_name, last_name, dob
+            "Json_ext", first_name, last_name, dob, location_id
             )
             SELECT gen_random_uuid(), false, 1, userUUID, userUUID,
-            "Json_ext", "Json_ext"->>'first_name', "Json_ext" ->> 'last_name', to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD')
-            FROM individual_individualdatasource
-            WHERE upload_id=current_upload_id and individual_id is null and "isDeleted"=False
+                "Json_ext",
+                "Json_ext"->>'first_name',
+                "Json_ext" ->> 'last_name',
+                to_date("Json_ext" ->> 'dob', 'YYYY-MM-DD'),
+                loc."LocationId"
+            FROM individual_individualdatasource AS ds
+            LEFT JOIN "tblLocations" AS loc
+                    ON loc."LocationName" = ds."Json_ext"->>'location_name'
+                    AND loc."LocationCode" = ds."Json_ext"->>'location_code'
+                    AND loc."LocationType"='V'
+                    AND loc."ValidityTo" IS NULL
+            WHERE ds.upload_id=current_upload_id 
+                AND ds.individual_id is null
+                AND ds."isDeleted"=False
             RETURNING "UUID", "Json_ext"  -- also return the Json_ext
           )
           UPDATE individual_individualdatasource

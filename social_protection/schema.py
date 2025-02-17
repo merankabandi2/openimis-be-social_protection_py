@@ -35,6 +35,7 @@ from social_protection.models import (
 )
 from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
 import graphene_django_optimizer as gql_optimizer
+from location.apps import LocationConfig
 
 
 def patch_details(beneficiary_df: pd.DataFrame):
@@ -82,6 +83,8 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
         customFilters=graphene.List(of_type=graphene.String),
@@ -91,6 +94,8 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
         dateValidFrom__Gte=graphene.DateTime(),
         dateValidTo__Lte=graphene.DateTime(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
         customFilters=graphene.List(of_type=graphene.String),
@@ -271,7 +276,14 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             )
 
         filters = _build_filters(info, **kwargs)
-        query = _apply_custom_filters(Beneficiary.objects.filter(*filters), **kwargs)
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='individual__'))
+
+        query = Beneficiary.get_queryset(None, info.context.user)
+        query = _apply_custom_filters(query.filter(*filters), **kwargs)
 
         eligible_uuids, eligibility_check_performed = _get_eligible_uuids(query, info, **kwargs)
         query = _annotate_is_eligible(query, eligible_uuids, eligibility_check_performed)
@@ -342,7 +354,14 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             )
 
         filters = _build_filters(info, **kwargs)
-        query = _apply_custom_filters(GroupBeneficiary.objects.filter(*filters), **kwargs)
+        
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='group__'))
+
+        query = GroupBeneficiary.get_queryset(None, info.context.user)
+        query = _apply_custom_filters(query.filter(*filters), **kwargs)
 
         eligible_group_uuids, eligibility_check_performed = _get_eligible_group_uuids(query, info, **kwargs)
         query = _annotate_is_eligible(query, eligible_group_uuids, eligibility_check_performed)
@@ -439,6 +458,14 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         if sort_alphabetically:
             query = query.order_by('code')
         return gql_optimizer.query(query, info)
+    
+    @staticmethod
+    def _get_location_filters(parent_location, parent_location_level, prefix=""):
+        query_key = "uuid"
+        for i in range(len(LocationConfig.location_types) - parent_location_level - 1):
+            query_key = "parent__" + query_key
+        query_key = prefix + "location__" + query_key
+        return Q(**{query_key: parent_location})
 
 
 class Mutation(graphene.ObjectType):
