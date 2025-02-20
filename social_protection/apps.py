@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
     "enable_maker_checker_for_beneficiary_update": True,
     "validation_import_valid_items": "validation.import_valid_items",
     "validation_import_valid_items": "validation.import_valid_items",
+    "validation_import_group_valid_items": "validation.import_group_valid_items",
     "validation_upload_valid_items": "validation.upload_valid_items",
     "validation_download_invalid_items": "validation.download_invalid_items",
     "benefit_plan_suspend": "benefit_plan.benefit_plan_suspend",
@@ -40,6 +41,7 @@ DEFAULT_CONFIG = {
     "validation_group_enrollment": "validation-group-enrollment",
 
     "enable_maker_checker_logic_enrollment": True,
+    "enable_maker_checker_for_group_upload": True,
     "beneficiary_mask_fields": [
         'json_ext.beneficiary_data_source',
         'json_ext.educated_level'
@@ -87,6 +89,7 @@ class SocialProtectionConfig(AppConfig):
     validation_upload_valid_items_workflow = None
     validation_enrollment = None
     validation_group_enrollment = None
+    validation_import_group_valid_items = None
     benefit_plan_suspend = None
 
     enable_maker_checker_for_beneficiary_upload = None
@@ -94,6 +97,7 @@ class SocialProtectionConfig(AppConfig):
 
     enable_python_workflows = None
     enable_maker_checker_logic_enrollment = None
+    enable_maker_checker_for_group_upload = None
     beneficiary_mask_fields = None
     group_beneficiary_mask_fields = None
     beneficiary_base_fields = None

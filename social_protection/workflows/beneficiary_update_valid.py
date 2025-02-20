@@ -10,13 +10,21 @@ logger = logging.getLogger(__name__)
 
 def process_update_valid_beneficiaries_workflow(user_uuid, benefit_plan_uuid, upload_uuid, accepted=None):
     user = User.objects.get(id=user_uuid)
+    benefit_plan = BenefitPlan.objects.get(id=benefit_plan_uuid)
     service = SqlProcedurePythonWorkflow(benefit_plan_uuid, upload_uuid, user_uuid, accepted)
     service.validate_dataframe_headers(True)
     if isinstance(accepted, list):
-        service.execute(upload_sql_partial, [upload_uuid, user_uuid, benefit_plan_uuid, accepted])
+        if benefit_plan.type == BenefitPlan.BenefitPlanType.INDIVIDUAL_TYPE:
+            service.execute(upload_sql_partial, [upload_uuid, user_uuid, benefit_plan_uuid, accepted])
+        else:
+            # TO-DO - add update mode for group update upload
+            pass
     else:
-        service.execute(upload_sql, [upload_uuid, user_uuid, benefit_plan_uuid])
-    benefit_plan = BenefitPlan.objects.get(id=benefit_plan_uuid)
+        if benefit_plan.type == BenefitPlan.BenefitPlanType.INDIVIDUAL_TYPE:
+            service.execute(upload_sql, [upload_uuid, user_uuid, benefit_plan_uuid])
+        else:
+            # TO-DO - add update mode for group update upload
+            pass
     BeneficiaryImportService(user).synchronize_data_for_reporting(upload_uuid, benefit_plan)
 
 
