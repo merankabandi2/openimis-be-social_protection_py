@@ -276,6 +276,8 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
         self.assertEqual(upload.error, {})
 
         data_entries = IndividualDataSource.objects.filter(upload_id=self.upload_group_uuid)
+        for entry in data_entries:
+            self.assertIsNotNone(entry.individual_id)
 
         # Check created individuals have the expected field values
         valid_ds = data_entries.get(id=self.valid_individual_group_data_source.id)
@@ -307,3 +309,28 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
         group_beneficiaries = GroupBeneficiary.objects.filter(benefit_plan=self.benefit_plan_group)
         beneficiary_groups = [group_ben.group for group_ben in group_beneficiaries]
         self.assertIn(group, beneficiary_groups)
+
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_individual_upload', True)
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_group_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_group_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_group_valid_items',
+           "validation.import_group_valid_items")
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_valid_items_workflow',
+           "socialProtection.Python Beneficiaries Valid Upload")
+    def test_process_import_group_beneficiaries_workflow_with_all_valid_entries_with_maker_checker(self):
+        process_import_beneficiaries_workflow(self.user_uuid, self.benefit_plan_group.uuid, self.upload_group_uuid)
+        from social_protection.services import BeneficiaryImportService
+        BeneficiaryImportService(self.user).create_task_with_importing_valid_items(
+            self.upload_group_uuid,
+            self.benefit_plan_group
+        )
+        upload = IndividualDataSourceUpload.objects.get(id=self.upload_group_uuid)
+
+        self.assertEqual(upload.status, "WAITING_FOR_VERIFICATION")
+        self.assertEqual(upload.error, {})
+
+        # Verify that individual IDs not yet assigned to data entries in IndividualDataSource
+        data_entries = IndividualDataSource.objects.filter(upload_id=self.upload_group_uuid)
+        for entry in data_entries:
+            self.assertIsNone(entry.individual_id)
