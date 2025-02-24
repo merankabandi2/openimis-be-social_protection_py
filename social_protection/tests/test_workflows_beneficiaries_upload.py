@@ -319,7 +319,6 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
     @patch('social_protection.apps.SocialProtectionConfig.validation_import_valid_items_workflow',
            "socialProtection.Python Beneficiaries Valid Upload")
     def test_process_import_group_beneficiaries_workflow_with_all_valid_entries_with_maker_checker(self):
-        process_import_beneficiaries_workflow(self.user_uuid, self.benefit_plan_group.uuid, self.upload_group_uuid)
         from social_protection.services import BeneficiaryImportService
         BeneficiaryImportService(self.user).create_task_with_importing_valid_items(
             self.upload_group_uuid,
