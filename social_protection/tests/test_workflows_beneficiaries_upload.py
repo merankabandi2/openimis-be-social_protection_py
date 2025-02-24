@@ -5,8 +5,15 @@ from individual.models import (
     Individual,
     IndividualDataSource,
     IndividualDataSourceUpload,
+    Group,
+    GroupIndividual,
 )
-from social_protection.models import Beneficiary, BenefitPlan, BenefitPlanDataUploadRecords
+from social_protection.models import (
+    Beneficiary,
+    BenefitPlan,
+    BenefitPlanDataUploadRecords,
+    GroupBeneficiary
+)
 from social_protection.tests.test_helpers import create_benefit_plan
 from social_protection.workflows.base_beneficiary_upload import process_import_beneficiaries_workflow
 from location.test_helpers import create_test_village, assign_user_districts
@@ -54,6 +61,15 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
                 "beneficiary_data_schema": {}
             })
 
+        self.benefit_plan_group = create_benefit_plan(self.user.username, {
+            "name": "Test Group Benefit Plan",
+            "description": "A test benefit plan",
+            "code": "TEST-GR",
+            "max_beneficiaries": 1000,
+            "beneficiary_data_schema": {},
+            "type": BenefitPlan.BenefitPlanType.GROUP_TYPE
+        })
+
         self.upload = IndividualDataSourceUpload(
             source_name='csv',
             source_type='upload',
@@ -62,6 +78,14 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
         self.upload.save(user=self.user)
         self.upload_uuid = self.upload.id
 
+        self.upload_group = IndividualDataSourceUpload(
+            source_name='csv',
+            source_type='upload_group',
+            status="PENDING",
+        )
+        self.upload_group.save(user=self.user)
+        self.upload_group_uuid = self.upload_group.id
+
         upload_record = BenefitPlanDataUploadRecords(
             data_upload=self.upload,
             workflow='Python Beneficiaries Upload',
@@ -69,6 +93,14 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
             json_ext={}
         )
         upload_record.save(user=self.user.user)
+
+        self.upload_record_group = BenefitPlanDataUploadRecords(
+            data_upload=self.upload_group,
+            workflow='Python Beneficiaries Upload',
+            benefit_plan=self.benefit_plan_group,
+            json_ext={}
+        )
+        self.upload_record_group.save(user=self.user.user)
 
         self.village = create_test_village({
             'name': 'McLean',
@@ -94,6 +126,36 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
         )
         self.invalid_data_source.save(user=self.user)
 
+        self.valid_individual_group_data_source = IndividualDataSource(
+            upload_id=self.upload_group_uuid,
+            json_ext={
+                "dob": "1995-02-26",
+                "last_name": "TEST",
+                "first_name": "TEST",
+                "group_code": "TEST",
+                "location_name": self.village.name,
+                "location_code": self.village.code,
+                "recipient_info": None,
+                "individual_role": "Son"
+            }
+        )
+        self.valid_individual_group_data_source.save(user=self.user)
+
+        self.valid_individual_group_data_source2 = IndividualDataSource(
+            upload_id=self.upload_group_uuid,
+            json_ext={
+                "dob": "2000-07-16",
+                "last_name": "TEST2",
+                "first_name": "TEST2",
+                "group_code": "TEST",
+                "location_name": self.village.name,
+                "location_code": self.village.code,
+                "recipient_info": None,
+                "individual_role": "Daughter"
+            }
+        )
+        self.valid_individual_group_data_source2.save(user=self.user)
+
     @patch('individual.apps.IndividualConfig.enable_maker_checker_for_individual_upload', False)
     @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload', False)
     def test_process_import_beneficiaries_workflow_successful_execution(self):
@@ -102,7 +164,6 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
         upload = IndividualDataSourceUpload.objects.get(id=self.upload_uuid)
 
         # Check that the status is 'FAIL' due to missing fields in one entry
-        # print(vars(upload))
         self.assertEqual(upload.status, "FAIL")
         self.assertIsNotNone(upload.error)
         errors = upload.error['errors']
@@ -174,7 +235,7 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
     @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload', True)
     def test_process_import_beneficiaries_workflow_with_all_valid_entries_with_maker_checker(self):
         # Update invalid entry in IndividualDataSource to valid data
-        self.invalid_data_source.json_ext={
+        self.invalid_data_source.json_ext = {
             "first_name": "Jane Workflow",
             "last_name": "Doe",
             "dob": "1982-01-01",
@@ -191,5 +252,84 @@ class ProcessImportBeneficiariesWorkflowTest(TestCase):
 
         # Verify that individual IDs not yet assigned to data entries in IndividualDataSource
         data_entries = IndividualDataSource.objects.filter(upload_id=self.upload_uuid)
+        for entry in data_entries:
+            self.assertIsNone(entry.individual_id)
+
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_individual_upload', False)
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_group_upload', False)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_group_upload', False)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload', False)
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_group_valid_items',
+           "validation.import_group_valid_items")
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_valid_items_workflow',
+           "socialProtection.Python Beneficiaries Valid Upload")
+    def test_process_import_group_beneficiaries_workflow_with_all_valid_entries(self):
+        process_import_beneficiaries_workflow(self.user_uuid, self.benefit_plan_group.uuid, self.upload_group_uuid)
+        from social_protection.services import BeneficiaryImportService
+        BeneficiaryImportService(self.user).create_task_with_importing_valid_items(
+            self.upload_group_uuid,
+            self.benefit_plan_group
+        )
+        upload = IndividualDataSourceUpload.objects.get(id=self.upload_group_uuid)
+
+        self.assertEqual(upload.status, "SUCCESS", upload.error)
+        self.assertEqual(upload.error, {})
+
+        data_entries = IndividualDataSource.objects.filter(upload_id=self.upload_group_uuid)
+        for entry in data_entries:
+            self.assertIsNotNone(entry.individual_id)
+
+        # Check created individuals have the expected field values
+        valid_ds = data_entries.get(id=self.valid_individual_group_data_source.id)
+        individual1 = Individual.objects.get(id=valid_ds.individual_id)
+        json_ext1 = self.valid_individual_group_data_source.json_ext
+        self.assertEqual(individual1.first_name, json_ext1['first_name'])
+        self.assertEqual(individual1.last_name, json_ext1['last_name'])
+        self.assertEqual(individual1.dob.strftime('%Y-%m-%d'), json_ext1['dob'])
+        self.assertEqual(individual1.location.name, json_ext1['location_name'])
+
+        valid_ds2 = data_entries.get(id=self.valid_individual_group_data_source2.id)
+        individual2 = Individual.objects.get(id=valid_ds2.individual_id)
+        json_ext2 = self.valid_individual_group_data_source2.json_ext
+        self.assertEqual(individual2.first_name, json_ext2['first_name'])
+        self.assertEqual(individual2.last_name, json_ext2['last_name'])
+        self.assertEqual(individual2.dob.strftime('%Y-%m-%d'), json_ext2['dob'])
+        self.assertEqual(individual2.first_name, json_ext2['first_name'])
+        self.assertEqual(individual2.last_name, json_ext2['last_name'])
+        self.assertEqual(individual2.location.name, json_ext2['location_name'])
+
+        # Verify that the new group is created
+        group_code = json_ext2['group_code']
+        group = Group.objects.get(code=group_code)
+        self.assertEqual(group.code, group_code)
+        group_individuals = GroupIndividual.objects.filter(group=group)
+        self.assertEqual(group_individuals.count(), 2)
+
+        # Verify that the new groups are added to the benefit plan using the GroupBeneficiary model
+        group_beneficiaries = GroupBeneficiary.objects.filter(benefit_plan=self.benefit_plan_group)
+        beneficiary_groups = [group_ben.group for group_ben in group_beneficiaries]
+        self.assertIn(group, beneficiary_groups)
+
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_individual_upload', True)
+    @patch('individual.apps.IndividualConfig.enable_maker_checker_for_group_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_group_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload', True)
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_group_valid_items',
+           "validation.import_group_valid_items")
+    @patch('social_protection.apps.SocialProtectionConfig.validation_import_valid_items_workflow',
+           "socialProtection.Python Beneficiaries Valid Upload")
+    def test_process_import_group_beneficiaries_workflow_with_all_valid_entries_with_maker_checker(self):
+        from social_protection.services import BeneficiaryImportService
+        BeneficiaryImportService(self.user).create_task_with_importing_valid_items(
+            self.upload_group_uuid,
+            self.benefit_plan_group
+        )
+        upload = IndividualDataSourceUpload.objects.get(id=self.upload_group_uuid)
+
+        self.assertEqual(upload.status, "WAITING_FOR_VERIFICATION")
+        self.assertEqual(upload.error, {})
+
+        # Verify that individual IDs not yet assigned to data entries in IndividualDataSource
+        data_entries = IndividualDataSource.objects.filter(upload_id=self.upload_group_uuid)
         for entry in data_entries:
             self.assertIsNone(entry.individual_id)

@@ -62,12 +62,9 @@ def import_beneficiaries(request):
         user = request.user
         import_file, workflow, benefit_plan, group_aggregation_column = _resolve_import_beneficiaries_args(request)
         _handle_file_upload(import_file, benefit_plan)
-        if benefit_plan.type == BenefitPlan.BenefitPlanType.INDIVIDUAL_TYPE:
-            result = BeneficiaryImportService(user).import_beneficiaries(
-                import_file, benefit_plan, workflow, group_aggregation_column
-            )
-        else:
-            raise NotImplementedError(_("cannot updload groups"))
+        result = BeneficiaryImportService(user).import_beneficiaries(
+            import_file, benefit_plan, workflow, group_aggregation_column
+        )
         if not result.get('success'):
             raise ValueError('{}: {}'.format(result.get("message"), result.get("details")))
 
