@@ -2,7 +2,7 @@ import graphene
 import pandas as pd
 
 from django.contrib.auth.models import AnonymousUser
-from django.db.models import Q, Case, When, BooleanField, Value
+from django.db.models import Q, Case, When, BooleanField, Value, Count, Exists, OuterRef
 from django.core.exceptions import PermissionDenied
 
 from django.utils.translation import gettext as _
@@ -24,18 +24,21 @@ from social_protection.gql_mutations import (
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
-    BeneficiaryGQLType, GroupBeneficiaryGQLType,
+    BeneficiaryGQLType,
+    BenefitPlanLocationGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
     BenefitPlanHistoryGQLType
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
+    BeneficiaryStatus,
     BenefitPlan,
     Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords
 )
 from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
 import graphene_django_optimizer as gql_optimizer
 from location.apps import LocationConfig
+from location.models import Location
 
 
 def patch_details(beneficiary_df: pd.DataFrame):
@@ -140,6 +143,16 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         individual_id=graphene.String(),
         group_id=graphene.String(),
         beneficiary_status=graphene.String(),
+        search=graphene.String(),
+        sort_alphabetically=graphene.Boolean(),
+    )
+
+    location_by_benefit_plan = OrderedDjangoFilterConnectionField(
+        BenefitPlanLocationGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        benefit_plan__id=graphene.UUID(required=True),
         search=graphene.String(),
         sort_alphabetically=graphene.Boolean(),
     )
@@ -466,6 +479,96 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             query_key = "parent__" + query_key
         query_key = prefix + "location__" + query_key
         return Q(**{query_key: parent_location})
+
+    def resolve_location_by_benefit_plan(self, info, **kwargs):
+        def _build_filters(info, **kwargs):
+            filters = append_validity_filter(**kwargs)
+            client_mutation_id = kwargs.get("client_mutation_id")
+            if client_mutation_id:
+                filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+            
+            benefit_plan_id = kwargs.get("benefit_plan__id")
+            location_type = kwargs.get("type", "D")  # Default to 'D' if not specified
+            
+            if benefit_plan_id:
+                # Configure the correct filter based on type
+                if location_type == "D":
+                    # District level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent__parent=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+                elif location_type == "W":
+                    # Ward level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+                elif location_type == "V":
+                    # Village level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location=OuterRef('pk'),
+                            benefit_plan_id=benefit_plan_id
+                        )
+                    ))
+            
+            Query._check_permissions(
+                info.context.user,
+                SocialProtectionConfig.gql_beneficiary_search_perms
+            )
+            return filters
+        
+        def _annotate_stats(query, **kwargs):
+            benefit_plan_id = kwargs.get("benefit_plan__id")
+            location_type = kwargs.get("type", "D")  # Default to 'D' if not specified
+            
+            annotations = {}
+            
+            # Configure the correct annotation paths based on type
+            if location_type == "D":
+                # Province level
+                path_prefix = 'children__children__groups__groupbeneficiary'
+            elif location_type == "W":
+                # Commune level
+                path_prefix = 'children__groups__groupbeneficiary'
+            elif location_type == "V":
+                # colline level
+                path_prefix = 'groups__groupbeneficiary'
+            else:
+                path_prefix = 'children__children__groups__groupbeneficiary'  # Default
+            
+            # Add annotations for different beneficiary statuses
+            for status_name, status_value in [
+                ('count_selected', BeneficiaryStatus.POTENTIAL),
+                ('count_active', BeneficiaryStatus.ACTIVE),
+                ('count_suspended', BeneficiaryStatus.SUSPENDED)
+            ]:
+                annotations[status_name] = Count(
+                    path_prefix,
+                    filter=Q(**{
+                        f'{path_prefix}__status': status_value
+                    })
+                )
+            query = query.filter(**{f'{path_prefix}__benefit_plan_id': benefit_plan_id})
+            return query.annotate(**annotations)
+        
+        filters = _build_filters(info, **kwargs)
+        parent_location = kwargs.get('parent_location')
+        parent_location_level = kwargs.get('parent_location_level')
+        
+        if parent_location is not None and parent_location_level is not None:
+            filters.append(Query._get_location_filters(parent_location, parent_location_level))
+        
+        query = Location.get_queryset(None, info.context.user)
+        query = query.filter(*filters)
+        query = _annotate_stats(query, **kwargs)
+        
+        return gql_optimizer.query(query, info)
 
 
 class Mutation(graphene.ObjectType):

@@ -11,6 +11,9 @@ from individual.gql_queries import IndividualGQLType, GroupGQLType, \
     IndividualDataSourceUploadGQLType
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords
+from location.gql_queries import LocationGQLType
+
+from location.models import Location
 
 
 def _have_permissions(user, permission):
@@ -165,6 +168,29 @@ class BenefitPlanSchemaFieldsGQLType(ObjectType):
         )
         return field_list
 
+
+class BenefitPlanLocationGQLType(LocationGQLType):
+    count_selected = graphene.Int()
+    count_active = graphene.Int()
+    count_suspended = graphene.Int()
+    count_all= graphene.Int()
+
+    class Meta:
+        model = Location
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "uuid": ["exact"],
+            "code": ["exact", "istartswith", "icontains", "iexact", "ne"],
+            "name": ["exact", "istartswith", "icontains", "iexact", "ne"],
+            "type": ["exact"],
+            "parent__uuid": ["exact", "in"],  # can't import itself!
+            "parent__parent__uuid": ["exact", "in"],  # can't import itself!
+            # can't import itself!
+            "parent__parent__parent__uuid": ["exact", "in"],
+            "parent__id": ["exact", "in"],  # can't import itself!
+        }
+        connection_class = ExtendedConnection
 
 class BenefitPlanHistoryGQLType(DjangoObjectType, JsonExtMixin):
     uuid = graphene.String(source='uuid')
