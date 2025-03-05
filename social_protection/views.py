@@ -1,6 +1,8 @@
 import logging
 import json
 import pandas as pd
+import mimetypes
+import os
 
 from django.db.models import Q
 from django.http import HttpResponse, StreamingHttpResponse
@@ -18,6 +20,33 @@ from social_protection.services import BeneficiaryImportService
 from workflow.services import WorkflowService
 
 logger = logging.getLogger(__name__)
+
+
+ALLOWED_EXTENSIONS = {".csv", ".xls", ".xlsx"}
+ALLOWED_MIME_TYPES = {
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+}
+
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+mimetypes.add_type("application/vnd.ms-excel", ".xls")
+
+
+def is_valid_file(import_file):
+    """ Validate file extension and MIME type """
+    file_extension = os.path.splitext(import_file.name)[1].lower()
+    if file_extension not in ALLOWED_EXTENSIONS:
+        return False, "Invalid file type. Allowed: .csv, .xls, .xlsx"
+
+    file_mime_type, _ = mimetypes.guess_type(import_file.name)
+    if not file_mime_type:
+        return False, "Could not determine file type"
+
+    if file_mime_type not in ALLOWED_MIME_TYPES:
+        return False, f"Invalid MIME type: {file_mime_type}"
+
+    return True, None
 
 
 def get_global_schema_fields(benefit_plan):
@@ -61,6 +90,11 @@ def import_beneficiaries(request):
     try:
         user = request.user
         import_file, workflow, benefit_plan, group_aggregation_column = _resolve_import_beneficiaries_args(request)
+
+        is_valid, error_message = is_valid_file(import_file)
+        if not is_valid:
+            return Response({'success': False, 'error': error_message}, status=status.HTTP_400_BAD_REQUEST)
+
         _handle_file_upload(import_file, benefit_plan)
         result = BeneficiaryImportService(user).import_beneficiaries(
             import_file, benefit_plan, workflow, group_aggregation_column
