@@ -244,17 +244,16 @@ class BeneficiaryImportService:
         return {'success': True, 'data': validated_dataframe, 'summary_invalid_items': invalid_items}
 
     def create_task_with_importing_valid_items(self, upload_id: uuid, benefit_plan: BenefitPlan):
-        BeneficiaryTaskCreatorService(self.user)\
-            .create_task_with_importing_valid_items(upload_id, benefit_plan)
-
-        record = BenefitPlanDataUploadRecords.objects.get(
-            data_upload_id=upload_id,
-            benefit_plan=benefit_plan,
-            is_deleted=False
-        )
-        if not SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload:
-            from social_protection.signals.on_validation_import_valid_items import ItemsUploadTaskCompletionEvent
-            ItemsUploadTaskCompletionEvent(
+        if SocialProtectionConfig.enable_maker_checker_for_beneficiary_upload:
+            BeneficiaryTaskCreatorService(self.user) \
+                .create_task_with_importing_valid_items(upload_id, benefit_plan)
+        else:
+            record = BenefitPlanDataUploadRecords.objects.get(
+                data_upload_id=upload_id,
+                is_deleted=False
+            )
+            from social_protection.signals.on_validation_import_valid_items import IndividualItemsImportTaskCompletionEvent
+            IndividualItemsImportTaskCompletionEvent(
                 SocialProtectionConfig.validation_import_valid_items_workflow,
                 record,
                 record.data_upload.id,
@@ -263,18 +262,19 @@ class BeneficiaryImportService:
             ).run_workflow()
 
     def create_task_with_update_valid_items(self, upload_id: uuid, benefit_plan: BenefitPlan):
-        BeneficiaryTaskCreatorService(self.user)\
-            .create_task_with_update_valid_items(upload_id, benefit_plan)
+        if SocialProtectionConfig.enable_maker_checker_for_beneficiary_update:
+            BeneficiaryTaskCreatorService(self.user)\
+                .create_task_with_update_valid_items(upload_id, benefit_plan)
 
-        record = BenefitPlanDataUploadRecords.objects.get(
-            data_upload_id=upload_id,
-            benefit_plan=benefit_plan,
-            is_deleted=False
-        )
         # Resolve automatically if maker-checker not enabled
         if not SocialProtectionConfig.enable_maker_checker_for_beneficiary_update:
-            from social_protection.signals.on_validation_import_valid_items import ItemsUploadTaskCompletionEvent
-            ItemsUploadTaskCompletionEvent(
+            from social_protection.signals.on_validation_import_valid_items import IndividualItemsUploadTaskCompletionEvent
+            record = BenefitPlanDataUploadRecords.objects.get(
+                data_upload_id=upload_id,
+                benefit_plan=benefit_plan,
+                is_deleted=False
+            )
+            IndividualItemsUploadTaskCompletionEvent(
                 SocialProtectionConfig.validation_upload_valid_items_workflow,
                 record,
                 record.data_upload.id,
