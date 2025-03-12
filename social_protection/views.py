@@ -45,7 +45,7 @@ def is_valid_file(import_file):
         return False, _("Could not determine file type")
 
     if file_mime_type not in ALLOWED_MIME_TYPES:
-        return False, _(f"Invalid MIME type: {file_mime_type}")
+        return False, _(f"Invalid MIME type:") + f" {file_mime_type}"
 
     return True, None
 
