@@ -152,7 +152,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
-        benefit_plan__id=graphene.UUID(required=True),
+        benefit_plan__id=graphene.UUID(required=False),
         search=graphene.String(),
         sort_alphabetically=graphene.Boolean(),
     )
@@ -516,6 +516,29 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
                             benefit_plan_id=benefit_plan_id
                         )
                     ))
+            else:
+                # Configure the correct filter based on type
+                if location_type == "D":
+                    # District level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent__parent=OuterRef('pk')
+                        )
+                    ))
+                elif location_type == "W":
+                    # Ward level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location__parent=OuterRef('pk')
+                        )
+                    ))
+                elif location_type == "V":
+                    # Village level
+                    filters.append(Exists(
+                        GroupBeneficiary.objects.filter(
+                            group__location=OuterRef('pk')
+                        )
+                    ))
             
             Query._check_permissions(
                 info.context.user,
@@ -554,7 +577,8 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
                         f'{path_prefix}__status': status_value
                     })
                 )
-            query = query.filter(**{f'{path_prefix}__benefit_plan_id': benefit_plan_id})
+            if benefit_plan_id:
+                query = query.filter(**{f'{path_prefix}__benefit_plan_id': benefit_plan_id})
             return query.annotate(**annotations)
         
         filters = _build_filters(info, **kwargs)
