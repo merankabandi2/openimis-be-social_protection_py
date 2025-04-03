@@ -36,3 +36,12 @@ msgstr "BenefitPlan name %(name) already exists"
 #: social_protection/validation.py:73
 msgid "social_protection.validation.field_empty"
 msgstr "%(field) can't be empty"
+
+msgid "Invalid file type. Allowed: .csv, .xls, .xlsx"
+msgstr "Invalid file type. Allowed: .csv, .xls, .xlsx"
+
+msgid "Could not determine file type"
+msgstr "Could not determine file type"
+
+msgid "Invalid MIME type:"
+msgstr "Invalid MIME type:"
