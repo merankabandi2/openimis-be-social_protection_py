@@ -1,7 +1,7 @@
 from unittest import mock
 import graphene
 from core.models import User
-from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase
+from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 from core.test_helpers import create_test_interactive_user
 from social_protection import schema as sp_schema
 from graphene import Schema
@@ -17,10 +17,6 @@ import json
 class BeneficiaryGQLTest(openIMISGraphQLTestCase):
     schema = Schema(query=sp_schema.Query)
 
-    class BaseTestContext:
-        def __init__(self, user):
-            self.user = user
-
     class AnonymousUserContext:
         user = mock.Mock(is_anonymous=True)
 
@@ -31,7 +27,7 @@ class BeneficiaryGQLTest(openIMISGraphQLTestCase):
         if not cls.user:
             cls.user=create_test_interactive_user(username='admin')
         # some test data so as to created contract properly
-        cls.user_token = get_token(cls.user, cls.BaseTestContext(user=cls.user))
+        cls.user_token = BaseTestContext(user=cls.user).get_jwt()
         cls.benefit_plan = create_benefit_plan(cls.user.username, payload_override={
             'code': 'SGQLTest',
             'type': "INDIVIDUAL"
