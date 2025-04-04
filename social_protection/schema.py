@@ -26,12 +26,16 @@ from social_protection.gql_queries import (
     BenefitPlanGQLType,
     BeneficiaryGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
-    BenefitPlanHistoryGQLType
+    BenefitPlanHistoryGQLType,
+    ActivityGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
     BenefitPlan,
-    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords
+    Beneficiary,
+    GroupBeneficiary,
+    BenefitPlanDataUploadRecords,
+    Activity,
 )
 from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
 import graphene_django_optimizer as gql_optimizer
@@ -142,6 +146,13 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         beneficiary_status=graphene.String(),
         search=graphene.String(),
         sort_alphabetically=graphene.Boolean(),
+    )
+
+    activity = OrderedDjangoFilterConnectionField(
+        ActivityGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -458,7 +469,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         if sort_alphabetically:
             query = query.order_by('code')
         return gql_optimizer.query(query, info)
-    
+
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
         query_key = "uuid"
@@ -466,6 +477,16 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             query_key = "parent__" + query_key
         query_key = prefix + "location__" + query_key
         return Q(**{query_key: parent_location})
+
+    def resolve_activity(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_activity_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+        query = Activity.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
 
 
 class Mutation(graphene.ObjectType):

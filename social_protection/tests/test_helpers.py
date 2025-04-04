@@ -2,7 +2,7 @@ import random
 import string
 import copy
 from individual.models import Individual, Group, GroupIndividual
-from social_protection.models import BenefitPlan
+from social_protection.models import BenefitPlan, Activity
 from social_protection.tests.data import (
     service_add_payload_valid_schema,
     service_beneficiary_add_payload,
@@ -87,3 +87,9 @@ def add_group_to_benefit_plan(service, group, benefit_plan, payload_override={})
     assert result.get('success', False), result.get('detail', "No details provided")
     uuid = result.get('data', {}).get('uuid', None)
     return uuid
+
+def create_activity(name, username):
+    activity = Activity(name=name)
+    activity.save(username=username)
+    return activity.id
+
