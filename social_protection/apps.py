@@ -62,6 +62,7 @@ DEFAULT_CONFIG = {
 class SocialProtectionConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'social_protection'
+    verbose_name = 'Social Protection'
 
     gql_benefit_plan_search_perms = None
     gql_benefit_plan_create_perms = None

@@ -107,6 +107,14 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
         return queryset.filter(group__in=group_queryset)
 
 
+class Activity(core_models.HistoryBusinessModel):
+    name = models.CharField(max_length=255, null=False, unique=True)
+
+    class Meta:
+        verbose_name = "Activity"
+        verbose_name_plural = "Activities"
+
+
 class JSONUpdate(Func):
     function = 'JSONB_SET'
     arity = 3
