@@ -2,6 +2,7 @@ import random
 import string
 import copy
 from individual.models import Individual, Group, GroupIndividual
+from location.models import Location
 from social_protection.models import BenefitPlan, Activity
 from social_protection.tests.data import (
     service_add_payload_valid_schema,
@@ -29,6 +30,13 @@ def create_benefit_plan(username, payload_override={}):
     benefit_plan.save(username=username)
 
     return benefit_plan
+
+def find_or_create_benefit_plan(payload, username):
+    qs = BenefitPlan.objects.filter(**payload)
+    if qs:
+        return qs.first()
+    else:
+        return create_benefit_plan(username, payload)
 
 def create_individual(username, payload_override={}):
     updated_payload = merge_dicts(service_add_individual_payload_with_ext, payload_override)
@@ -88,8 +96,12 @@ def add_group_to_benefit_plan(service, group, benefit_plan, payload_override={})
     uuid = result.get('data', {}).get('uuid', None)
     return uuid
 
-def create_activity(name, username):
-    activity = Activity(name=name)
-    activity.save(username=username)
-    return activity.id
+def find_or_create_activity(name, username):
+    activity_found = Activity.objects.filter(name=name)
+    if activity_found:
+        activity = activity_found.first()
+    else:
+        activity = Activity(name=name)
+        activity.save(username=username)
+    return activity
 

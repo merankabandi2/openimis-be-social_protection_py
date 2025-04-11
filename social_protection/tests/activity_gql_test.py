@@ -2,7 +2,7 @@ import json
 from core.models import User
 from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
 from core.test_helpers import create_test_interactive_user
-from social_protection.tests.test_helpers import create_activity
+from social_protection.tests.test_helpers import find_or_create_activity
 from django.contrib.auth import get_user_model
 
 
@@ -20,9 +20,9 @@ class ActivitiesGQLTest(openIMISGraphQLTestCase):
             username="medEONoRight", roles=[1]) # 1 is the med enrollment officer role
         cls.med_enroll_officer_token = BaseTestContext(user=cls.med_enroll_officer).get_jwt()
 
-        cls.activity_1 = create_activity("Nutrition Outreach", username)
-        cls.activity_2 = create_activity("School Enrollment Drive", username)
-        cls.activity_3 = create_activity("Public Health Training", username)
+        cls.activity_1 = find_or_create_activity("Nutrition Outreach", username)
+        cls.activity_2 = find_or_create_activity("School Enrollment Drive", username)
+        cls.activity_3 = find_or_create_activity("Public Health Training", username)
 
     def test_activity_query(self):
         response = self.query(

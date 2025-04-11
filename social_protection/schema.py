@@ -27,7 +27,7 @@ from social_protection.gql_queries import (
     BeneficiaryGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
     BenefitPlanHistoryGQLType,
-    ActivityGQLType,
+    ActivityGQLType, ProjectGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
@@ -36,6 +36,7 @@ from social_protection.models import (
     GroupBeneficiary,
     BenefitPlanDataUploadRecords,
     Activity,
+    Project,
 )
 from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
 import graphene_django_optimizer as gql_optimizer
@@ -150,6 +151,13 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
 
     activity = OrderedDjangoFilterConnectionField(
         ActivityGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+    )
+
+    project = OrderedDjangoFilterConnectionField(
+        ProjectGQLType,
         orderBy=graphene.List(of_type=graphene.String),
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
@@ -486,6 +494,22 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
 
         filters = append_validity_filter(**kwargs)
         query = Activity.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+    def resolve_project(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_project_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        query = Project.objects.filter(*filters)
         return gql_optimizer.query(query, info)
 
 

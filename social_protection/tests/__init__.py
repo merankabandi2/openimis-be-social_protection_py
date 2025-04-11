@@ -6,5 +6,6 @@ from .beneficiary_gql_test import BeneficiaryGQLTest
 from .test_workflows_beneficiaries_upload import ProcessImportBeneficiariesWorkflowTest
 from .test_workflows_beneficiaries_update import ProcessUpdateBeneficiariesWorkflowTest
 from .activity_gql_test import ActivitiesGQLTest
+from .project_gql_test import ProjectsGQLTest
 # TODO: implement group upload workflow
 # from .group_import_gql_test import GroupBeneficiaryImportGQLTest

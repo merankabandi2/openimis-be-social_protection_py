@@ -11,7 +11,8 @@ from individual.gql_queries import IndividualGQLType, GroupGQLType, \
     IndividualDataSourceUploadGQLType
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
-    Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords, Activity,
+    Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords,
+    Activity, Project,
 )
 
 
@@ -224,4 +225,31 @@ class ActivityGQLType(DjangoObjectType, JsonExtMixin):
         model = Activity
         interfaces = (graphene.relay.Node,)
         filterset_class = ActivityFilter
+        connection_class = ExtendedConnection
+
+
+class ProjectFilter(django_filters.FilterSet):
+    class Meta:
+        model = Project
+        fields = {
+            "id": ["exact"],
+            "name": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            'status': ['exact', 'icontains'],
+            'benefit_plan__id': ['exact'],
+            'activity__id': ['exact'],
+            'location__id': ['exact'],
+            'target_beneficiaries': ['exact', 'gte', 'lte'],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"],
+            "version": ["exact"],
+        }
+
+class ProjectGQLType(DjangoObjectType, JsonExtMixin):
+    uuid = graphene.String(source='uuid')
+
+    class Meta:
+        model = Project
+        interfaces = (graphene.relay.Node,)
+        filterset_class = ProjectFilter
         connection_class = ExtendedConnection
