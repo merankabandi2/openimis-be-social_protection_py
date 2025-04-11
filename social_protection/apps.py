@@ -20,6 +20,7 @@ DEFAULT_CONFIG = {
     "gql_schema_delete_perms": ["171004"],
     "gql_activity_search_perms": ["160001"],
     "gql_project_search_perms": ["160001"], # TODO Wei: add project specific rights
+    "gql_project_create_perms": ["160002"], # TODO Wei: add project specific rights
 
 
     # Create task for model instead of performing crud action
@@ -81,6 +82,7 @@ class SocialProtectionConfig(AppConfig):
     gql_schema_delete_perms = None
     gql_activity_search_perms = None
     gql_project_search_perms = None
+    gql_project_create_perms = None
 
     gql_check_benefit_plan_update = None
     gql_check_beneficiary_crud = None

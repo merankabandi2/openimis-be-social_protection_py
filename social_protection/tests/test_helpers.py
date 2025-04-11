@@ -1,6 +1,9 @@
+import json
 import random
 import string
 import copy
+from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase
+from core.models.base_mutation import MutationLog
 from individual.models import Individual, Group, GroupIndividual
 from location.models import Location
 from social_protection.models import BenefitPlan, Activity
@@ -105,3 +108,52 @@ def find_or_create_activity(name, username):
         activity.save(username=username)
     return activity
 
+class PatchedOpenIMISGraphQLTestCase(openIMISGraphQLTestCase):
+
+    # overriding helper method from core to allow errors
+    def get_mutation_result(self, mutation_uuid, token, internal=False):
+        content = None
+        while True:
+            # wait for the mutation to be done
+            if internal:
+                filter_uuid = f""" id: "{mutation_uuid}" """
+            else:
+                filter_uuid = f""" clientMutationId: "{mutation_uuid}" """
+
+            response = self.query(
+                f"""
+                {{
+                mutationLogs({filter_uuid})
+                {{
+                pageInfo {{ hasNextPage, hasPreviousPage, startCursor, endCursor}}
+                edges
+                {{
+                    node
+                    {{
+                        id,status,error,clientMutationId,clientMutationLabel,clientMutationDetails,requestDateTime,jsonExt
+                    }}
+                }}
+                }}
+                }}
+
+                """,
+                headers={"HTTP_AUTHORIZATION": f"Bearer {token}"},
+            )
+            return json.loads(response.content)
+
+            time.sleep(1)
+
+    def assert_mutation_error(self, uuid, token, expected_error):
+        mutation_result = self.get_mutation_result(uuid, token, internal=True)
+        mutation_error = mutation_result['data']['mutationLogs']['edges'][0]['node']['error']
+        self.assertIsNotNone(mutation_error, f"no error found when this was expected {expected_error}")
+        self.assertTrue(expected_error in mutation_error, mutation_error)
+
+    def assert_mutation_success(self, uuid, token):
+        mutation_result = self.get_mutation_result(uuid, token, internal=True)
+        mutation_status = mutation_result['data']['mutationLogs']['edges'][0]['node']['status']
+        self.assertEqual(
+            mutation_status,
+            MutationLog.SUCCESS,
+            mutation_result['data']['mutationLogs']['edges'][0]['node']['error']
+        )

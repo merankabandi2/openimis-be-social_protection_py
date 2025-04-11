@@ -8,13 +8,14 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
 from core.schema import OpenIMISMutation
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
-    BenefitPlan,
+    BenefitPlan, Project, Activity,
     Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation
 )
 from social_protection.services import (
-    BenefitPlanService,
+    BenefitPlanService, ProjectService,
     BeneficiaryService, GroupBeneficiaryService
 )
+from location.models import Location
 
 
 def check_perms_for_field(user, permission, data, field_string):
@@ -441,3 +442,45 @@ class DeleteGroupBeneficiaryMutation(BaseHistoryModelDeleteMutationMixin, BaseMu
 
     class Input(OpenIMISMutation.Input):
         ids = graphene.List(graphene.UUID)
+
+class CreateProjectInputType(OpenIMISMutation.Input):
+    benefit_plan_id = graphene.ID(required=True)
+    name = graphene.String(required=True)
+    status = graphene.String(required=False)
+    activity_id = graphene.ID(required=True)
+    location_id = graphene.ID(required=True)
+    target_beneficiaries = graphene.Int(required=True)
+
+
+class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "CreateProjectMutation"
+    _mutation_module = "social_protection"
+    _model = Project
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if isinstance(user, AnonymousUser) or not user.has_perms(
+            SocialProtectionConfig.gql_project_create_perms
+        ):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop("client_mutation_id")
+        if "client_mutation_label" in data:
+            data.pop("client_mutation_label")
+
+        data["benefit_plan"] = BenefitPlan.objects.get(id=data.pop("benefit_plan_id"))
+        data["activity"] = Activity.objects.get(id=data.pop("activity_id"))
+        data["location"] = Location.objects.get(id=data.pop("location_id"))
+        data.setdefault("status", Project._meta.get_field("status").get_default())
+
+        service = ProjectService(user)
+        res = service.create(data)
+
+        return res if not res['success'] else None
+
+    class Input(CreateProjectInputType):
+        pass
+

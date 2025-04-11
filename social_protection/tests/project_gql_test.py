@@ -1,8 +1,9 @@
 import json
 from core.models import User
-from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from core.models.openimis_graphql_test_case import BaseTestContext
 from core.test_helpers import create_test_interactive_user
 from social_protection.tests.test_helpers import (
+    PatchedOpenIMISGraphQLTestCase,
     find_or_create_activity,
     find_or_create_benefit_plan,
 )
@@ -11,7 +12,7 @@ from location.test_helpers import create_test_village
 from django.contrib.auth import get_user_model
 
 
-class ProjectsGQLTest(openIMISGraphQLTestCase):
+class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
 
     @classmethod
     def setUpTestData(cls):
@@ -107,3 +108,89 @@ class ProjectsGQLTest(openIMISGraphQLTestCase):
         content = json.loads(response.content)
         self.assertEqual(content['errors'][0]['message'], 'Unauthorized')
 
+    def test_create_project_mutation_success(self):
+        mutation = """
+        mutation CreateProject($input: CreateProjectMutationInput!) {
+          createProject(input: $input) {
+            clientMutationId
+            internalId
+          }
+        }
+        """
+
+        variables = {
+            "input": {
+                "benefitPlanId": str(self.benefit_plan.id),
+                "name": "New Village Sanitation Project",
+                "activityId": str(self.activity.id),
+                "locationId": str(self.location.id),
+                "targetBeneficiaries": 200,
+                "clientMutationId": "abc123"
+            }
+        }
+
+        response = self.query(
+            mutation,
+            variables=variables,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['createProject']
+        self.assert_mutation_success(data['internalId'], self.user_token)
+
+        # Verify project is created in DB
+        project_exists = Project.objects.filter(
+            name="New Village Sanitation Project",
+            benefit_plan=self.benefit_plan,
+            activity=self.activity,
+            location=self.location,
+            target_beneficiaries=200
+        ).exists()
+        self.assertTrue(project_exists)
+
+    def test_create_project_mutation_requires_authentication(self):
+        mutation = """
+        mutation {
+          createProject(input: {
+            benefitPlanId: "%s",
+            name: "Unauthorized Project",
+            activityId: "%s",
+            locationId: "%s",
+            targetBeneficiaries: 80
+          }) {
+            clientMutationId
+            internalId
+          }
+        }
+        """ % (self.benefit_plan.id, self.activity.id, self.location.id)
+
+        response = self.query(mutation)
+        self.assertResponseNoErrors(response)
+
+        data = json.loads(response.content)['data']['createProject']
+        self.assert_mutation_error(data['internalId'], self.user_token, "authentication_required")
+
+
+    def test_create_project_mutation_missing_required_field(self):
+        mutation = """
+        mutation {
+          createProject(input: {
+            name: "Missing Location",
+            benefitPlanId: "%s",
+            activityId: "%s",
+            targetBeneficiaries: 120
+          }) {
+            clientMutationId
+            internalId
+          }
+        }
+        """ % (self.benefit_plan.id, self.activity.id)
+
+        response = self.query(
+            mutation,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertEqual(response.status_code, 400)
+        content = json.loads(response.content)
+        self.assertIn("errors", content)

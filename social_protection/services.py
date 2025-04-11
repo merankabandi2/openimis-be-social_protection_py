@@ -23,6 +23,7 @@ from social_protection.models import (
     BenefitPlanDataUploadRecords,
     GroupBeneficiary,
     BeneficiaryStatus,
+    Project,
 )
 
 from social_protection.utils import load_dataframe, fetch_summary_of_valid_items, fetch_summary_of_broken_items
@@ -560,3 +561,23 @@ class BeneficiaryTaskCreatorService:
 class GroupBeneficiaryImportService(BeneficiaryImportService):
     pass
     # TODO: create workflow upload/update groups and use it here
+
+
+class ProjectService(BaseService):
+    OBJECT_TYPE = Project
+
+    def __init__(self, user):
+        super().__init__(user)
+
+    @register_service_signal("project_service.create")
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal("project_service.update")
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal("project_service.delete")
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+
