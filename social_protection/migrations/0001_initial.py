@@ -14,7 +14,6 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('policyholder', '0017_auto_20230126_0903'),
         ('core', '0018_auto_20230318_1551'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL)
     ]
@@ -42,7 +41,7 @@ class Migration(migrations.Migration):
                 ('history_change_reason', models.CharField(max_length=100, null=True)),
                 ('history_type', models.CharField(choices=[('+', 'Created'), ('~', 'Changed'), ('-', 'Deleted')], max_length=1)),
                 ('history_user', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
-                ('holder', models.ForeignKey(blank=True, db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to='policyholder.policyholder')),
+                ('holder',models.IntegerField(default=1)),
                 ('user_created', models.ForeignKey(blank=True, db_column='UserCreatedUUID', db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to=settings.AUTH_USER_MODEL)),
                 ('user_updated', models.ForeignKey(blank=True, db_column='UserUpdatedUUID', db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to=settings.AUTH_USER_MODEL)),
             ],
@@ -71,7 +70,7 @@ class Migration(migrations.Migration):
                 ('max_beneficiaries', models.SmallIntegerField()),
                 ('ceiling_per_beneficiary', models.DecimalField(blank=True, decimal_places=2, max_digits=18, null=True)),
                 ('beneficiary_data_schema', models.JSONField(blank=True, null=True)),
-                ('holder', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.DO_NOTHING, to='policyholder.policyholder')),
+                ('holder', models.IntegerField(default=1)),
                 ('user_created', models.ForeignKey(db_column='UserCreatedUUID', on_delete=django.db.models.deletion.DO_NOTHING, related_name='benefitplan_user_created', to=settings.AUTH_USER_MODEL)),
                 ('user_updated', models.ForeignKey(db_column='UserUpdatedUUID', on_delete=django.db.models.deletion.DO_NOTHING, related_name='benefitplan_user_updated', to=settings.AUTH_USER_MODEL)),
             ],
