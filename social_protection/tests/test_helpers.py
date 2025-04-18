@@ -6,12 +6,13 @@ from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase
 from core.models.base_mutation import MutationLog
 from individual.models import Individual, Group, GroupIndividual
 from location.models import Location
-from social_protection.models import BenefitPlan, Activity
+from social_protection.models import BenefitPlan, Activity, Project
 from social_protection.tests.data import (
     service_add_payload_valid_schema,
     service_beneficiary_add_payload,
     service_add_individual_payload_with_ext,
 )
+from location.test_helpers import create_test_village
 
 
 def generate_random_string(length=6):
@@ -107,6 +108,20 @@ def find_or_create_activity(name, username):
         activity = Activity(name=name)
         activity.save(username=username)
     return activity
+
+def create_project(name, benefit_plan, username):
+    activity = find_or_create_activity("Community Outreach", username)
+    location = create_test_village()
+
+    project = Project(
+        name=name,
+        benefit_plan=benefit_plan,
+        activity=activity,
+        location=location,
+        target_beneficiaries=100,
+    )
+    project.save(username=username)
+    return project
 
 class PatchedOpenIMISGraphQLTestCase(openIMISGraphQLTestCase):
 
