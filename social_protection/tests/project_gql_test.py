@@ -123,7 +123,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                 "benefitPlanId": str(self.benefit_plan.id),
                 "name": "New Village Sanitation Project",
                 "activityId": str(self.activity.id),
-                "locationId": str(self.location.id),
+                "locationId": str(self.location.uuid),
                 "targetBeneficiaries": 200,
                 "clientMutationId": "abc123"
             }
@@ -163,7 +163,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             internalId
           }
         }
-        """ % (self.benefit_plan.id, self.activity.id, self.location.id)
+        """ % (self.benefit_plan.id, self.activity.id, self.location.uuid)
 
         response = self.query(mutation)
         self.assertResponseNoErrors(response)

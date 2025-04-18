@@ -473,7 +473,7 @@ class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
 
         data["benefit_plan"] = BenefitPlan.objects.get(id=data.pop("benefit_plan_id"))
         data["activity"] = Activity.objects.get(id=data.pop("activity_id"))
-        data["location"] = Location.objects.get(id=data.pop("location_id"))
+        data["location"] = Location.objects.get(uuid=data.pop("location_id"))
         data.setdefault("status", Project._meta.get_field("status").get_default())
 
         service = ProjectService(user)
