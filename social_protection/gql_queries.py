@@ -239,6 +239,7 @@ class ProjectFilter(django_filters.FilterSet):
             'activity__id': ['exact'],
             'location__id': ['exact'],
             'target_beneficiaries': ['exact', 'gte', 'lte'],
+            'working_days': ['exact', 'gte', 'lte'],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
             "is_deleted": ["exact"],

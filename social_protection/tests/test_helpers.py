@@ -119,6 +119,7 @@ def create_project(name, benefit_plan, username):
         activity=activity,
         location=location,
         target_beneficiaries=100,
+        working_days=90,
     )
     project.save(username=username)
     return project

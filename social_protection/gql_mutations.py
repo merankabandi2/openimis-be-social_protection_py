@@ -450,6 +450,7 @@ class CreateProjectInputType(OpenIMISMutation.Input):
     activity_id = graphene.ID(required=True)
     location_id = graphene.ID(required=True)
     target_beneficiaries = graphene.Int(required=True)
+    working_days = graphene.Int(required=True)
 
 
 class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):

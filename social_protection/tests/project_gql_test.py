@@ -37,6 +37,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             activity=cls.activity,
             location=cls.location,
             target_beneficiaries=100,
+            working_days=120,
         )
         cls.project_1.save(username=username)
 
@@ -46,6 +47,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             activity=cls.activity,
             location=cls.location,
             target_beneficiaries=150,
+            working_days=90,
         )
         cls.project_2.save(username=username)
 
@@ -64,6 +66,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                     activity { name }
                     location { name }
                     targetBeneficiaries
+                    workingDays
                   }
                 }
               }
@@ -125,6 +128,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                 "activityId": str(self.activity.id),
                 "locationId": str(self.location.uuid),
                 "targetBeneficiaries": 200,
+                "workingDays": 90,
                 "clientMutationId": "abc123"
             }
         }
@@ -157,7 +161,8 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             name: "Unauthorized Project",
             activityId: "%s",
             locationId: "%s",
-            targetBeneficiaries: 80
+            targetBeneficiaries: 80,
+            workingDays: 90
           }) {
             clientMutationId
             internalId
@@ -179,7 +184,8 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             name: "Missing Location",
             benefitPlanId: "%s",
             activityId: "%s",
-            targetBeneficiaries: 120
+            targetBeneficiaries: 120,
+            workingDays: 90
           }) {
             clientMutationId
             internalId
