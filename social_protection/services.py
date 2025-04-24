@@ -60,6 +60,7 @@ class BenefitPlanService(BaseService, UpdateCheckerLogicServiceMixin):
 
     @register_service_signal('benefit_plan_service.delete')
     def delete(self, obj_data):
+        obj_data = {k: v for k, v in obj_data.items() if k != 'user'}
         return super().delete(obj_data)
 
     @register_service_signal('benefit_plan_service.close')
