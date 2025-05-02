@@ -20,20 +20,30 @@ from social_protection.gql_mutations import (
     CreateBeneficiaryMutation,
     UpdateBeneficiaryMutation,
     DeleteBeneficiaryMutation, CreateGroupBeneficiaryMutation, UpdateGroupBeneficiaryMutation,
-    DeleteGroupBeneficiaryMutation
+    DeleteGroupBeneficiaryMutation,
+    CreateProjectMutation,
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
     BeneficiaryGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
-    BenefitPlanHistoryGQLType
+    BenefitPlanHistoryGQLType,
+    ActivityGQLType, ProjectGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
     BenefitPlan,
-    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords
+    Beneficiary,
+    GroupBeneficiary,
+    BenefitPlanDataUploadRecords,
+    Activity,
+    Project,
 )
-from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
+from social_protection.validation import (
+    validate_bf_unique_code,
+    validate_bf_unique_name,
+    validate_project_unique_name,
+)
 import graphene_django_optimizer as gql_optimizer
 from location.apps import LocationConfig
 
@@ -142,6 +152,27 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         beneficiary_status=graphene.String(),
         search=graphene.String(),
         sort_alphabetically=graphene.Boolean(),
+    )
+
+    activity = OrderedDjangoFilterConnectionField(
+        ActivityGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+    )
+
+    project = OrderedDjangoFilterConnectionField(
+        ProjectGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+    )
+
+    project_name_validity = graphene.Field(
+        ValidationMessageGQLType,
+        project_name=graphene.String(required=True),
+        benefit_plan_id=graphene.String(required=True),
+        description="Checks that the specified Project name is valid"
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -458,7 +489,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         if sort_alphabetically:
             query = query.order_by('code')
         return gql_optimizer.query(query, info)
-    
+
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
         query_key = "uuid"
@@ -466,6 +497,41 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             query_key = "parent__" + query_key
         query_key = prefix + "location__" + query_key
         return Q(**{query_key: parent_location})
+
+    def resolve_activity(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_activity_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+        query = Activity.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+    def resolve_project(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_project_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        query = Project.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+    def resolve_project_name_validity(self, info, **kwargs):
+        if not info.context.user.has_perms(SocialProtectionConfig.gql_project_search_perms):
+            raise PermissionDenied(_("unauthorized"))
+        errors = validate_project_unique_name(kwargs['project_name'], kwargs['benefit_plan_id'])
+        if errors:
+            return ValidationMessageGQLType(False, error_message=errors[0]['message'])
+        else:
+            return ValidationMessageGQLType(True)
 
 
 class Mutation(graphene.ObjectType):
@@ -481,3 +547,5 @@ class Mutation(graphene.ObjectType):
     create_group_beneficiary = CreateGroupBeneficiaryMutation.Field()
     update_group_beneficiary = UpdateGroupBeneficiaryMutation.Field()
     delete_group_beneficiary = DeleteGroupBeneficiaryMutation.Field()
+
+    create_project = CreateProjectMutation.Field()

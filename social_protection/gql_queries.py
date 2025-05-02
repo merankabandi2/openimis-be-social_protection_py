@@ -10,7 +10,10 @@ from core import prefix_filterset, ExtendedConnection
 from individual.gql_queries import IndividualGQLType, GroupGQLType, \
     IndividualDataSourceUploadGQLType
 from social_protection.apps import SocialProtectionConfig
-from social_protection.models import Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords
+from social_protection.models import (
+    Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords,
+    Activity, Project,
+)
 
 
 def _have_permissions(user, permission):
@@ -200,3 +203,54 @@ class BenefitPlanHistoryGQLType(DjangoObjectType, JsonExtMixin):
 
     def resolve_has_payment_plans(self, info):
         return PaymentPlan.objects.filter(benefit_plan_id=self.id).exists()
+
+
+class ActivityFilter(django_filters.FilterSet):
+    class Meta:
+        model = Activity
+        fields = {
+            "id": ["exact"],
+            "name": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"],
+            "version": ["exact"],
+        }
+
+
+class ActivityGQLType(DjangoObjectType, JsonExtMixin):
+    uuid = graphene.String(source='uuid')
+
+    class Meta:
+        model = Activity
+        interfaces = (graphene.relay.Node,)
+        filterset_class = ActivityFilter
+        connection_class = ExtendedConnection
+
+
+class ProjectFilter(django_filters.FilterSet):
+    class Meta:
+        model = Project
+        fields = {
+            "id": ["exact"],
+            "name": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            'status': ['exact', 'icontains'],
+            'benefit_plan__id': ['exact'],
+            'activity__id': ['exact'],
+            'location__id': ['exact'],
+            'target_beneficiaries': ['exact', 'gte', 'lte'],
+            'working_days': ['exact', 'gte', 'lte'],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"],
+            "version": ["exact"],
+        }
+
+class ProjectGQLType(DjangoObjectType, JsonExtMixin):
+    uuid = graphene.String(source='uuid')
+
+    class Meta:
+        model = Project
+        interfaces = (graphene.relay.Node,)
+        filterset_class = ProjectFilter
+        connection_class = ExtendedConnection

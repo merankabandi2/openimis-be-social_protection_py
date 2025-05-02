@@ -3,7 +3,6 @@ import json
 import logging
 import uuid
 
-import concurrent.futures
 import math
 import pandas as pd
 from django.core.files.uploadedfile import InMemoryUploadedFile
@@ -24,6 +23,7 @@ from social_protection.models import (
     BenefitPlanDataUploadRecords,
     GroupBeneficiary,
     BeneficiaryStatus,
+    Project,
 )
 
 from social_protection.utils import load_dataframe, fetch_summary_of_valid_items, fetch_summary_of_broken_items
@@ -286,7 +286,7 @@ class BeneficiaryImportService:
         self._synchronize_individual(upload_id)
         self._synchronize_beneficiary(benefit_plan, upload_id)
 
-    def _validate_possible_beneficiaries(self, dataframe: DataFrame, benefit_plan: BenefitPlan, upload_id: uuid, num_workers=4):
+    def _validate_possible_beneficiaries(self, dataframe: DataFrame, benefit_plan: BenefitPlan, upload_id: uuid):
 
         if isinstance(benefit_plan.beneficiary_data_schema, str):
             schema_dict = json.loads(benefit_plan.beneficiary_data_schema)
@@ -305,22 +305,14 @@ class BeneficiaryImportService:
                 for field in unique_fields
             }
 
-        chunk_size = math.ceil(len(dataframe) / num_workers)
-        data_chunks = [dataframe[i:i + chunk_size] for i in range(0, dataframe.shape[0], chunk_size)]
-
-        validated_dataframe = []
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = [executor.submit(
-                self.process_chunk,
-                chunk,
-                properties,
-                unique_validations,
-                calculation,
-                calculation_uuid
-            ) for chunk in data_chunks]
-
-            for future in concurrent.futures.as_completed(futures):
-                validated_dataframe.extend(future.result())
+        # TODO: Use ProcessPoolExecutor after resolving django dependency loading issue
+        validated_dataframe = BeneficiaryImportService.process_chunk(
+            dataframe,
+            properties,
+            unique_validations,
+            calculation,
+            calculation_uuid,
+        )
 
         self.save_validation_error_in_data_source_bulk(validated_dataframe)
         invalid_items = fetch_summary_of_broken_items(upload_id)
@@ -569,3 +561,23 @@ class BeneficiaryTaskCreatorService:
 class GroupBeneficiaryImportService(BeneficiaryImportService):
     pass
     # TODO: create workflow upload/update groups and use it here
+
+
+class ProjectService(BaseService):
+    OBJECT_TYPE = Project
+
+    def __init__(self, user):
+        super().__init__(user)
+
+    @register_service_signal("project_service.create")
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal("project_service.update")
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal("project_service.delete")
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+

@@ -3,7 +3,7 @@ from django.utils.translation import gettext as _
 
 from core.utils import validate_json_schema
 from core.validation import BaseModelValidation
-from social_protection.models import Beneficiary, BenefitPlan
+from social_protection.models import Beneficiary, BenefitPlan, Project
 
 
 class BenefitPlanValidation(BaseModelValidation):
@@ -76,3 +76,14 @@ class BeneficiaryValidation(BaseModelValidation):
 
 class GroupBeneficiaryValidation(BaseModelValidation):
     OBJECT_TYPE = Beneficiary
+
+
+def validate_project_unique_name(name, benefit_plan_id, uuid=None):
+    instance = Project.objects.filter(
+        name=name, benefit_plan__id=benefit_plan_id, is_deleted=False
+    ).exclude(id=uuid).first()
+    if instance:
+        return [{"message": _("social_protection.validation.project.name_exists" % {
+            'name': name
+        })}]
+    return []

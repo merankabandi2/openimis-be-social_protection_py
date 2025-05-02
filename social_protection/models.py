@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from core import models as core_models
 from core.models import UUIDModel, ObjectMutation, MutationLog
 from individual.models import Individual, Group, IndividualDataSourceUpload
+from location.models import Location
 
 
 class BeneficiaryStatus(models.TextChoices):
@@ -105,6 +106,35 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
     
         group_queryset = Group.get_queryset(groups, user)
         return queryset.filter(group__in=group_queryset)
+
+
+class Activity(core_models.HistoryBusinessModel):
+    name = models.CharField(max_length=255, null=False, unique=True)
+
+    class Meta:
+        verbose_name = "Activity"
+        verbose_name_plural = "Activities"
+
+
+class ProjectStatus(models.TextChoices):
+    PREPARATION = "PREPARATION", _("PREPARATION")
+    IN_PROGRESS = "IN PROGRESS", _("IN PROGRESS")
+    COMPLETED = "COMPLETED", _("COMPLETED")
+
+
+class Project(core_models.HistoryBusinessModel):
+    benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
+    name = models.CharField(max_length=255, null=False)
+    status = models.CharField(
+        max_length=100,
+        choices=ProjectStatus.choices,
+        default=ProjectStatus.PREPARATION,
+        null=False
+    )
+    activity = models.ForeignKey(Activity, models.DO_NOTHING, null=False)
+    location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
+    target_beneficiaries = models.SmallIntegerField(null=False)
+    working_days = models.SmallIntegerField(null=False)
 
 
 class JSONUpdate(Func):

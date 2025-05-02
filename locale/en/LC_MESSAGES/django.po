@@ -37,6 +37,9 @@ msgstr "BenefitPlan name %(name) already exists"
 msgid "social_protection.validation.field_empty"
 msgstr "%(field) can't be empty"
 
+msgid "social_protection.validation.project.name_exists"
+msgstr "Project name %(name) already exists"
+
 msgid "Invalid file type. Allowed: .csv, .xls, .xlsx"
 msgstr "Invalid file type. Allowed: .csv, .xls, .xlsx"
 
