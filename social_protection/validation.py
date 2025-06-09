@@ -2,7 +2,7 @@ from django.core.exceptions import ValidationError
 from django.utils.translation import gettext as _
 
 from core.utils import validate_json_schema
-from core.validation import BaseModelValidation
+from core.validation import BaseModelValidation, ObjectExistsValidationMixin
 from social_protection.models import Beneficiary, BenefitPlan, Project
 
 
@@ -87,3 +87,11 @@ def validate_project_unique_name(name, benefit_plan_id, uuid=None):
             'name': name
         })}]
     return []
+
+
+class ProjectValidation(BaseModelValidation, ObjectExistsValidationMixin):
+    OBJECT_TYPE = Project
+
+    @classmethod
+    def validate_undo_delete(cls, data):
+        cls.validate_object_exists(data.get('id'))

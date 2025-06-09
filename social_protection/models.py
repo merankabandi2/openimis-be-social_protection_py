@@ -118,7 +118,7 @@ class Activity(core_models.HistoryBusinessModel):
 
 class ProjectStatus(models.TextChoices):
     PREPARATION = "PREPARATION", _("PREPARATION")
-    IN_PROGRESS = "IN PROGRESS", _("IN PROGRESS")
+    IN_PROGRESS = "IN_PROGRESS", _("IN PROGRESS")
     COMPLETED = "COMPLETED", _("COMPLETED")
 
 

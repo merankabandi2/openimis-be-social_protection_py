@@ -29,7 +29,9 @@ from social_protection.models import (
 from social_protection.utils import load_dataframe, fetch_summary_of_valid_items, fetch_summary_of_broken_items
 from social_protection.validation import (
     BeneficiaryValidation,
-    BenefitPlanValidation, GroupBeneficiaryValidation
+    BenefitPlanValidation,
+    GroupBeneficiaryValidation,
+    ProjectValidation,
 )
 from tasks_management.services import UpdateCheckerLogicServiceMixin, CheckerLogicServiceMixin, \
     crud_business_data_builder
@@ -567,8 +569,8 @@ class GroupBeneficiaryImportService(BeneficiaryImportService):
 class ProjectService(BaseService):
     OBJECT_TYPE = Project
 
-    def __init__(self, user):
-        super().__init__(user)
+    def __init__(self, user, validation_class=ProjectValidation):
+        super().__init__(user, validation_class)
 
     @register_service_signal("project_service.create")
     def create(self, obj_data):
@@ -581,4 +583,23 @@ class ProjectService(BaseService):
     @register_service_signal("project_service.delete")
     def delete(self, obj_data):
         return super().delete(obj_data)
+
+    @register_service_signal('project_service.undo_delete')
+    def undo_delete(self, obj_data):
+        try:
+            with transaction.atomic():
+                self.validation_class.validate_undo_delete(obj_data)
+                obj_ = self.OBJECT_TYPE.objects.filter(id=obj_data['id']).first()
+                obj_.is_deleted = False
+                obj_.save(user=self.user.user)
+                return {
+                    "success": True,
+                    "message": "Ok",
+                    "detail": "Undo Delete",
+                }
+        except Exception as exc:
+            return output_exception(
+                model_name=self.OBJECT_TYPE.__name__, method="undo_delete", exception=exc
+            )
+
 

@@ -22,6 +22,9 @@ from social_protection.gql_mutations import (
     DeleteBeneficiaryMutation, CreateGroupBeneficiaryMutation, UpdateGroupBeneficiaryMutation,
     DeleteGroupBeneficiaryMutation,
     CreateProjectMutation,
+    UpdateProjectMutation,
+    DeleteProjectMutation,
+    UndoDeleteProjectMutation,
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
@@ -46,6 +49,7 @@ from social_protection.validation import (
 )
 import graphene_django_optimizer as gql_optimizer
 from location.apps import LocationConfig
+from location.models import extend_allowed_locations, Location
 
 
 def patch_details(beneficiary_df: pd.DataFrame):
@@ -166,6 +170,8 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         orderBy=graphene.List(of_type=graphene.String),
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
     )
 
     project_name_validity = graphene.Field(
@@ -521,6 +527,12 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             wait_for_mutation(client_mutation_id)
             filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
 
+        parent_location = kwargs.get('parent_location')
+        if parent_location is not None:
+            location = Location.objects.get(uuid=parent_location)
+            descendant_ids = extend_allowed_locations([location.pk])
+            filters.append(Q(location__id__in=descendant_ids))
+
         query = Project.objects.filter(*filters)
         return gql_optimizer.query(query, info)
 
@@ -549,3 +561,7 @@ class Mutation(graphene.ObjectType):
     delete_group_beneficiary = DeleteGroupBeneficiaryMutation.Field()
 
     create_project = CreateProjectMutation.Field()
+    update_project = UpdateProjectMutation.Field()
+    delete_project = DeleteProjectMutation.Field()
+    undo_delete_project = UndoDeleteProjectMutation.Field()
+
