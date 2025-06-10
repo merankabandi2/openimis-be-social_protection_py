@@ -337,7 +337,6 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
                     Query.object_type,
                     custom_filters,
                     query,
-                    "group__groupindividuals__individual",
                 )
             return query
 

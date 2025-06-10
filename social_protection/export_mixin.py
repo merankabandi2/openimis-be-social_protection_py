@@ -98,8 +98,7 @@ class ExportableSocialProtectionQueryMixin(ExportableQueryMixin):
                     "individual",
                     "GroupIndividual",
                     custom_filters,
-                    queryset,
-                    relation="group"
+                    queryset
                 )
             else:
                 queryset = CustomFilterWizardStorage.build_custom_filters_queryset(
