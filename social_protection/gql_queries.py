@@ -10,7 +10,7 @@ from core import prefix_filterset, ExtendedConnection
 from individual.gql_queries import IndividualGQLType, GroupGQLType, \
     IndividualDataSourceUploadGQLType
 from social_protection.apps import SocialProtectionConfig
-from social_protection.models import Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords
+from social_protection.models import Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords, LocationBenefitPlanPaymentPoint
 from location.gql_queries import LocationGQLType
 
 from location.models import Location
@@ -180,14 +180,9 @@ class BenefitPlanLocationGQLType(LocationGQLType):
         interfaces = (graphene.relay.Node,)
         filter_fields = {
             "id": ["exact"],
-            "uuid": ["exact"],
             "code": ["exact", "istartswith", "icontains", "iexact", "ne"],
             "name": ["exact", "istartswith", "icontains", "iexact", "ne"],
             "type": ["exact"],
-            "parent__uuid": ["exact", "in"],  # can't import itself!
-            "parent__parent__uuid": ["exact", "in"],  # can't import itself!
-            # can't import itself!
-            "parent__parent__parent__uuid": ["exact", "in"],
             "parent__id": ["exact", "in"],  # can't import itself!
         }
         connection_class = ExtendedConnection
@@ -226,3 +221,24 @@ class BenefitPlanHistoryGQLType(DjangoObjectType, JsonExtMixin):
 
     def resolve_has_payment_plans(self, info):
         return PaymentPlan.objects.filter(benefit_plan_id=self.id).exists()
+
+
+class LocationBenefitPlanPaymentPointGQLType(DjangoObjectType, JsonExtMixin):
+    uuid = graphene.String(source='uuid')
+    
+    class Meta:
+        model = LocationBenefitPlanPaymentPoint
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "payment_point_name": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            "payment_method": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            **prefix_filterset("location__", LocationGQLType._meta.filter_fields),
+            **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+            **prefix_filterset("ppm__", {"username": ["exact", "icontains", "istartswith"]}),
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"],
+            "version": ["exact"],
+        }
+        connection_class = ExtendedConnection

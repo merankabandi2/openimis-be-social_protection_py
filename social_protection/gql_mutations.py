@@ -9,11 +9,11 @@ from core.schema import OpenIMISMutation
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
     BenefitPlan,
-    Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation
+    Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation, LocationBenefitPlanPaymentPoint
 )
 from social_protection.services import (
     BenefitPlanService,
-    BeneficiaryService, GroupBeneficiaryService
+    BeneficiaryService, GroupBeneficiaryService, LocationBenefitPlanPaymentPointService
 )
 
 
@@ -435,6 +435,110 @@ class DeleteGroupBeneficiaryMutation(BaseHistoryModelDeleteMutationMixin, BaseMu
                     res = service.create_delete_task({'id': obj_id})
                 else:
                     res = service.delete({'id': obj_id, 'user': user})
+                if not res['success']:
+                    transaction.rollback()
+                    return res
+
+    class Input(OpenIMISMutation.Input):
+        ids = graphene.List(graphene.UUID)
+
+
+class CreateLocationBenefitPlanPaymentPointInputType(OpenIMISMutation.Input):
+    location_id = graphene.UUID(required=True)
+    benefit_plan_id = graphene.UUID(required=True)
+    payment_point_name = graphene.String(required=True)
+    payment_method = graphene.String(required=False)
+    ppm_id = graphene.UUID(required=False)
+    
+    date_valid_from = graphene.Date(required=True)
+    date_valid_to = graphene.Date(required=True)
+
+
+class UpdateLocationBenefitPlanPaymentPointInputType(CreateLocationBenefitPlanPaymentPointInputType):
+    id = graphene.UUID(required=True)
+
+
+class CreateLocationBenefitPlanPaymentPointMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
+    _mutation_class = "CreateLocationBenefitPlanPaymentPointMutation"
+    _mutation_module = "social_protection"
+    _model = LocationBenefitPlanPaymentPoint
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_benefit_plan_create_perms):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        service = LocationBenefitPlanPaymentPointService(user)
+        res = service.create(data)
+        return res if not res['success'] else None
+
+    class Input(CreateLocationBenefitPlanPaymentPointInputType):
+        pass
+
+
+class UpdateLocationBenefitPlanPaymentPointMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
+    _mutation_class = "UpdateLocationBenefitPlanPaymentPointMutation"
+    _mutation_module = "social_protection"
+    _model = LocationBenefitPlanPaymentPoint
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        super()._validate_mutation(user, **data)
+        if type(user) is AnonymousUser or not user.has_perms(
+                SocialProtectionConfig.gql_benefit_plan_update_perms):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "date_valid_to" not in data:
+            data['date_valid_to'] = None
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        service = LocationBenefitPlanPaymentPointService(user)
+        res = service.update(data)
+        return res if not res['success'] else None
+
+    class Input(UpdateLocationBenefitPlanPaymentPointInputType):
+        pass
+
+
+class DeleteLocationBenefitPlanPaymentPointMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
+    _mutation_class = "DeleteLocationBenefitPlanPaymentPointMutation"
+    _mutation_module = "social_protection"
+    _model = LocationBenefitPlanPaymentPoint
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        if type(user) is AnonymousUser or not user.id or not user.has_perms(
+                SocialProtectionConfig.gql_benefit_plan_delete_perms):
+            raise ValidationError("mutation.authentication_required")
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        service = LocationBenefitPlanPaymentPointService(user)
+        ids = data.get('ids')
+        if not ids:
+            return {'success': False, 'message': 'No IDs to delete', 'details': ''}
+
+        with transaction.atomic():
+            for obj_id in ids:
+                res = service.delete({'id': obj_id, 'user': user})
                 if not res['success']:
                     transaction.rollback()
                     return res

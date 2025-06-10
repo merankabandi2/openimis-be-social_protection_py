@@ -36,6 +36,7 @@ class ExportableSocialProtectionQueryMixin(ExportableQueryMixin):
             custom_filters = kwargs.pop("customFilters", None)
             export_fields = [cls._adjust_notation(f) for f in kwargs.pop('fields')]
             fields_mapping = json.loads(kwargs.pop('fields_columns'))
+            file_format = kwargs.pop('file_format', 'csv')
 
             source_field = getattr(cls, field_name)
             filter_kwargs = {k: v for k, v in kwargs.items() if k in source_field.filtering_args}
@@ -43,11 +44,46 @@ class ExportableSocialProtectionQueryMixin(ExportableQueryMixin):
             qs = default_resolve(None, info, **kwargs)
             qs = qs.filter(**filter_kwargs)
             qs = cls.__append_custom_filters(custom_filters, qs, fields_mapping)
-            export_file = ExportableQueryModel\
-                .create_csv_export(qs, export_fields, info.context.user, column_names=fields_mapping,
-                                   patches=cls.get_patches_for_field(field_name))
-
-            return export_file.name
+            # Handle special Excel export for group beneficiaries with photos
+            if file_format == 'xlsx' and field_name == 'group_beneficiary':
+                from .services import BeneficiaryExcelExportService
+                import tempfile
+                import os
+                from django.core.files.storage import default_storage
+                from django.core.files.base import ContentFile
+                
+                base_url = info.context.build_absolute_uri('/').rstrip('/')
+                export_service = BeneficiaryExcelExportService(info.context.user, base_url)
+                excel_file = export_service.export_group_beneficiaries_to_excel(qs)
+                
+                # Generate a unique filename
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f'beneficiaries_export_{timestamp}.xlsx'
+                
+                # Get the file content
+                excel_content = excel_file.getvalue()
+                
+                # Save the file using Django's storage system
+                file_content = ContentFile(excel_content)
+                saved_path = default_storage.save(f'exports/{filename}', file_content)
+                
+                # Create export record - ExportableQueryModel expects content as a file
+                export_obj = ExportableQueryModel(
+                    name=filename,
+                    model='GroupBeneficiary',
+                    content=saved_path,  # The file path saved by Django storage
+                    user=info.context.user,
+                    sql_query=str(qs.query),  # Store the query for reference
+                    file_format='xlsx'
+                )
+                export_obj.save()
+                
+                return export_obj.name
+            else:
+                export_file = ExportableQueryModel\
+                    .create_csv_export(qs, export_fields, info.context.user, column_names=fields_mapping,
+                                       patches=cls.get_patches_for_field(field_name))
+                return export_file.name
 
         setattr(cls, new_function_name, types.MethodType(exporter, cls))
 

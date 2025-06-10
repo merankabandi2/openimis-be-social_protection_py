@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from core import models as core_models
 from core.models import UUIDModel, ObjectMutation, MutationLog
 from individual.models import Individual, Group, IndividualDataSourceUpload
+from location.models import Location
 
 
 class BeneficiaryStatus(models.TextChoices):
@@ -110,3 +111,17 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
 class JSONUpdate(Func):
     function = 'JSONB_SET'
     arity = 3
+
+
+class LocationBenefitPlanPaymentPoint(core_models.HistoryBusinessModel):
+    location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
+    benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
+    payment_point_name = models.CharField(max_length=255, null=False)
+    payment_method = models.CharField(max_length=255, blank=True, null=True)
+    ppm = models.ForeignKey(settings.AUTH_USER_MODEL, models.DO_NOTHING, blank=True, null=True)
+    
+    class Meta:
+        unique_together = ('location', 'benefit_plan')
+        
+    def __str__(self):
+        return f'{self.location.name} - {self.benefit_plan.code} - {self.payment_point_name}'

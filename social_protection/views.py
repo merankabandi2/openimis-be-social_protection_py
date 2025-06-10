@@ -16,8 +16,8 @@ from im_export.views import check_user_rights
 from individual.apps import IndividualConfig
 from individual.models import IndividualDataSource
 from social_protection.apps import SocialProtectionConfig
-from social_protection.models import BenefitPlan
-from social_protection.services import BeneficiaryImportService
+from social_protection.models import BenefitPlan, Beneficiary, GroupBeneficiary
+from social_protection.services import BeneficiaryImportService, BeneficiaryExcelExportService
 from workflow.services import WorkflowService
 
 logger = logging.getLogger(__name__)
@@ -332,3 +332,47 @@ def _remove_file(benefit_plan, file):
     target_file_path = SocialProtectionConfig.get_beneficiary_upload_file_path(benefit_plan.id, file.name)
     file_handler = DefaultStorageFileHandler(target_file_path)
     file_handler.remove_file()
+
+
+@api_view(["GET"])
+@permission_classes([check_user_rights(SocialProtectionConfig.gql_beneficiary_search_perms, )])
+def export_beneficiaries_excel(request):
+    """Export group beneficiaries to Excel with specified format including photo URLs"""
+    try:
+        # Get filters from query params
+        benefit_plan_id = request.query_params.get('benefit_plan_id')
+        status_filter = request.query_params.get('status')
+        
+        # Build queryset for GroupBeneficiary
+        queryset = GroupBeneficiary.objects.filter(is_deleted=False)
+        
+        if benefit_plan_id:
+            queryset = queryset.filter(benefit_plan_id=benefit_plan_id)
+        
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Get base URL from request
+        base_url = request.build_absolute_uri('/').rstrip('/')
+        
+        # Create export service
+        export_service = BeneficiaryExcelExportService(request.user, base_url)
+        
+        # Generate Excel file
+        excel_file = export_service.export_group_beneficiaries_to_excel(
+            queryset, 
+            filename=f'beneficiaries_{status_filter or "all"}.xlsx'
+        )
+        
+        # Create response
+        response = HttpResponse(
+            excel_file.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="beneficiaries_{status_filter or "all"}.xlsx"'
+        
+        return response
+        
+    except Exception as exc:
+        logger.error("Error while exporting group beneficiaries to Excel", exc_info=exc)
+        return Response({'success': False, 'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

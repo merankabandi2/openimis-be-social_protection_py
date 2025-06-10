@@ -24,6 +24,7 @@ from social_protection.models import (
     BenefitPlanDataUploadRecords,
     GroupBeneficiary,
     BeneficiaryStatus,
+    LocationBenefitPlanPaymentPoint,
 )
 
 from social_protection.utils import load_dataframe, fetch_summary_of_valid_items, fetch_summary_of_broken_items
@@ -569,3 +570,146 @@ class BeneficiaryTaskCreatorService:
 class GroupBeneficiaryImportService(BeneficiaryImportService):
     pass
     # TODO: create workflow upload/update groups and use it here
+
+
+class LocationBenefitPlanPaymentPointService(BaseService):
+    OBJECT_TYPE = LocationBenefitPlanPaymentPoint
+
+    def __init__(self, user):
+        super().__init__(user)
+
+    @register_service_signal('location_benefit_plan_payment_point_service.create')
+    def create(self, obj_data):
+        return super().create(obj_data)
+
+    @register_service_signal('location_benefit_plan_payment_point_service.update')
+    def update(self, obj_data):
+        return super().update(obj_data)
+
+    @register_service_signal('location_benefit_plan_payment_point_service.delete')
+    def delete(self, obj_data):
+        return super().delete(obj_data)
+
+
+class BeneficiaryExcelExportService:
+    """Service for exporting beneficiaries to Excel with specific format including photo URLs"""
+    
+    def __init__(self, user, base_url='https://mis.merankabandi2.bi'):
+        self.user = user
+        self.base_url = base_url.rstrip('/')
+    
+    def export_group_beneficiaries_to_excel(self, group_beneficiaries_queryset, filename='beneficiaries.xlsx'):
+        """Export group beneficiaries to Excel with the specified format"""
+        import openpyxl
+        from openpyxl import Workbook
+        from django.http import HttpResponse
+        from io import BytesIO
+        from individual.models import GroupIndividual
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Beneficiaries"
+
+        # Define headers
+        headers = [
+            'nom', 'prenom', 'province', 'commune', 'colline', 
+            'cni', 'naissance_date', 'genre', 'socialid', 'pere', 'mere',
+            'photo', 'cni_recto', 'cni_verso'
+        ]
+        
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            ws.cell(row=1, column=col, value=header)
+        
+        # Write data
+        row_num = 2
+        
+        # Iterate through group beneficiaries
+        for group_beneficiary in group_beneficiaries_queryset.select_related(
+            'group', 
+            'group__location', 
+            'group__location__parent',
+            'group__location__parent__parent'
+        ).prefetch_related('group__groupindividuals__individual'):
+            
+            # Get location hierarchy from group
+            colline = group_beneficiary.group.location if group_beneficiary.group.location else None
+            commune = colline.parent if colline and colline.parent else None
+            province = commune.parent if commune and commune.parent else None
+            
+            # Get only the primary recipient from the group
+            primary_recipient = GroupIndividual.objects.filter(
+                group=group_beneficiary.group,
+                recipient_type='PRIMARY',
+                is_deleted=False
+            ).select_related('individual').first()
+            
+            # Skip if no primary recipient found
+            if not primary_recipient:
+                continue
+                
+            # Export only the primary recipient
+            group_individual = primary_recipient
+            individual = group_individual.individual
+            
+            # Get gender from json_ext
+            genre = individual.json_ext.get('sexe', '') if individual.json_ext else ''
+            
+            # Get CNI from json_ext
+            cni = individual.json_ext.get('ci', '') if individual.json_ext else ''
+            
+            # Format date
+            naissance_date = individual.dob.strftime('%Y-%m-%d') if individual.dob else ''
+            socialid = group_beneficiary.group.code if group_beneficiary.group else ''
+            pere = individual.json_ext.get('pere', '') if individual.json_ext else ''
+            mere = individual.json_ext.get('mere', '') if individual.json_ext else ''
+
+            # Generate photo URLs
+            individual_uuid = str(individual.id)
+            photo_url = f"{self.base_url}/api/merankabandi/beneficiary-photo/photo/{individual_uuid}/"
+            cni_recto_url = f"{self.base_url}/api/merankabandi/beneficiary-photo/photo_ci1/{individual_uuid}/"
+            cni_verso_url = f"{self.base_url}/api/merankabandi/beneficiary-photo/photo_ci2/{individual_uuid}/"
+            
+            # Write row data
+            row_data = [
+                individual.last_name,
+                individual.first_name,
+                province.name if province else '',
+                commune.name if commune else '',
+                colline.name if colline else '',
+                cni,
+                naissance_date,
+                genre,
+                socialid,
+                pere,
+                mere,
+                photo_url,
+                cni_recto_url,
+                cni_verso_url
+            ]
+            
+            for col, value in enumerate(row_data, 1):
+                ws.cell(row=row_num, column=col, value=value)
+            
+            row_num += 1
+        
+        # Auto-adjust column widths
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Save to BytesIO
+        excel_file = BytesIO()
+        wb.save(excel_file)
+        excel_file.seek(0)
+        
+        return excel_file

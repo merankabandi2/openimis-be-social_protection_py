@@ -20,20 +20,21 @@ from social_protection.gql_mutations import (
     CreateBeneficiaryMutation,
     UpdateBeneficiaryMutation,
     DeleteBeneficiaryMutation, CreateGroupBeneficiaryMutation, UpdateGroupBeneficiaryMutation,
-    DeleteGroupBeneficiaryMutation
+    DeleteGroupBeneficiaryMutation, CreateLocationBenefitPlanPaymentPointMutation, 
+    UpdateLocationBenefitPlanPaymentPointMutation, DeleteLocationBenefitPlanPaymentPointMutation
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
     BeneficiaryGQLType,
     BenefitPlanLocationGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
-    BenefitPlanHistoryGQLType
+    BenefitPlanHistoryGQLType, LocationBenefitPlanPaymentPointGQLType
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
     BeneficiaryStatus,
     BenefitPlan,
-    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords
+    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords, LocationBenefitPlanPaymentPoint
 )
 from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
 import graphene_django_optimizer as gql_optimizer
@@ -155,6 +156,17 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         benefit_plan__id=graphene.UUID(required=False),
         search=graphene.String(),
         sort_alphabetically=graphene.Boolean(),
+    )
+
+    location_benefit_plan_payment_point = OrderedDjangoFilterConnectionField(
+        LocationBenefitPlanPaymentPointGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        dateValidFrom__Gte=graphene.DateTime(),
+        dateValidTo__Lte=graphene.DateTime(),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        location_id=graphene.String(),
+        benefit_plan_id=graphene.String(),
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -577,6 +589,9 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
                         f'{path_prefix}__status': status_value
                     })
                 )
+            
+            # Add count_all annotation to count all beneficiaries regardless of status
+            annotations['count_all'] = Count(path_prefix)
             if benefit_plan_id:
                 query = query.filter(**{f'{path_prefix}__benefit_plan_id': benefit_plan_id})
             return query.annotate(**annotations)
@@ -594,6 +609,30 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         
         return gql_optimizer.query(query, info)
 
+    def resolve_location_benefit_plan_payment_point(self, info, **kwargs):
+        filters = append_validity_filter(**kwargs)
+        
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+            
+        location_id = kwargs.get("location_id", None)
+        if location_id:
+            filters.append(Q(location__id=location_id))
+            
+        benefit_plan_id = kwargs.get("benefit_plan_id", None)
+        if benefit_plan_id:
+            filters.append(Q(benefit_plan__id=benefit_plan_id))
+            
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_benefit_plan_search_perms
+        )
+        
+        query = LocationBenefitPlanPaymentPoint.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
 
 class Mutation(graphene.ObjectType):
     create_benefit_plan = CreateBenefitPlanMutation.Field()
@@ -608,3 +647,7 @@ class Mutation(graphene.ObjectType):
     create_group_beneficiary = CreateGroupBeneficiaryMutation.Field()
     update_group_beneficiary = UpdateGroupBeneficiaryMutation.Field()
     delete_group_beneficiary = DeleteGroupBeneficiaryMutation.Field()
+
+    create_location_benefit_plan_payment_point = CreateLocationBenefitPlanPaymentPointMutation.Field()
+    update_location_benefit_plan_payment_point = UpdateLocationBenefitPlanPaymentPointMutation.Field()
+    delete_location_benefit_plan_payment_point = DeleteLocationBenefitPlanPaymentPointMutation.Field()
