@@ -13,6 +13,7 @@ from location.models import Location
 
 class BeneficiaryStatus(models.TextChoices):
     POTENTIAL = "POTENTIAL", _("POTENTIAL")
+    VALIDATED = "VALIDATED", _("VALIDATED")
     ACTIVE = "ACTIVE", _("ACTIVE")
     GRADUATED = "GRADUATED", _("GRADUATED")
     SUSPENDED = "SUSPENDED", _("SUSPENDED")

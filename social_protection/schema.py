@@ -21,7 +21,9 @@ from social_protection.gql_mutations import (
     UpdateBeneficiaryMutation,
     DeleteBeneficiaryMutation, CreateGroupBeneficiaryMutation, UpdateGroupBeneficiaryMutation,
     DeleteGroupBeneficiaryMutation, CreateLocationBenefitPlanPaymentPointMutation, 
-    UpdateLocationBenefitPlanPaymentPointMutation, DeleteLocationBenefitPlanPaymentPointMutation
+    UpdateLocationBenefitPlanPaymentPointMutation, DeleteLocationBenefitPlanPaymentPointMutation,
+    BulkUpdateBeneficiaryStatusMutation, BulkUpdateGroupBeneficiaryStatusMutation,
+    CSVUpdateGroupBeneficiaryStatusMutation
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
@@ -642,10 +644,13 @@ class Mutation(graphene.ObjectType):
     create_beneficiary = CreateBeneficiaryMutation.Field()
     update_beneficiary = UpdateBeneficiaryMutation.Field()
     delete_beneficiary = DeleteBeneficiaryMutation.Field()
+    bulk_update_beneficiary_status = BulkUpdateBeneficiaryStatusMutation.Field()
 
     create_group_beneficiary = CreateGroupBeneficiaryMutation.Field()
     update_group_beneficiary = UpdateGroupBeneficiaryMutation.Field()
     delete_group_beneficiary = DeleteGroupBeneficiaryMutation.Field()
+    bulk_update_group_beneficiary_status = BulkUpdateGroupBeneficiaryStatusMutation.Field()
+    csv_update_group_beneficiary_status = CSVUpdateGroupBeneficiaryStatusMutation.Field()
 
     create_location_benefit_plan_payment_point = CreateLocationBenefitPlanPaymentPointMutation.Field()
     update_location_benefit_plan_payment_point = UpdateLocationBenefitPlanPaymentPointMutation.Field()
