@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('social_protection', '0017_add_activity_project_rights_to_admin'),
+        ('social_protection', '0017_add_activity_project_rights_to_admin_and_more'),
     ]
 
     operations = [

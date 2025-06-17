@@ -9,16 +9,82 @@ from django.db import migrations, models
 import django.db.models.deletion
 import simple_history.models
 
+from core.utils import insert_role_right_for_system, remove_role_right_for_system
+
+activity_rights = [208001, 208002, 208003, 208004]
+project_rights = [209001, 209002, 209003, 209004]
+imis_administrator_system = 64
+
+
+def add_rights(apps, schema_editor):
+    for right_id in activity_rights + project_rights:
+        insert_role_right_for_system(imis_administrator_system, right_id, apps)
+
+
+def remove_rights(apps, schema_editor):
+    for right_id in activity_rights + project_rights:
+        remove_role_right_for_system(imis_administrator_system, right_id, apps)
 
 class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('location', '0018_auto_20230925_2243'),
-        ('social_protection', '0015_historicalactivity_activity'),
+        ('social_protection', '0016_alter_beneficiary_status_and_more'),
     ]
 
     operations = [
+        migrations.CreateModel(
+            name='HistoricalActivity',
+            fields=[
+                ('id', models.UUIDField(db_column='UUID', db_index=True, default=None, editable=False)),
+                ('is_deleted', models.BooleanField(db_column='isDeleted', default=False)),
+                ('json_ext', models.JSONField(blank=True, db_column='Json_ext', null=True)),
+                ('date_created', core.fields.DateTimeField(db_column='DateCreated', default=datetime.datetime.now, null=True)),
+                ('date_updated', core.fields.DateTimeField(db_column='DateUpdated', default=datetime.datetime.now, null=True)),
+                ('version', models.IntegerField(default=1)),
+                ('date_valid_from', core.fields.DateTimeField(db_column='DateValidFrom', default=datetime.datetime.now)),
+                ('date_valid_to', core.fields.DateTimeField(blank=True, db_column='DateValidTo', null=True)),
+                ('replacement_uuid', models.UUIDField(blank=True, db_column='ReplacementUUID', null=True)),
+                ('name', models.CharField(db_index=True, max_length=255)),
+                ('history_id', models.AutoField(primary_key=True, serialize=False)),
+                ('history_date', models.DateTimeField(db_index=True)),
+                ('history_change_reason', models.CharField(max_length=100, null=True)),
+                ('history_type', models.CharField(choices=[('+', 'Created'), ('~', 'Changed'), ('-', 'Deleted')], max_length=1)),
+                ('history_user', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
+                ('user_created', models.ForeignKey(blank=True, db_column='UserCreatedUUID', db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to=settings.AUTH_USER_MODEL)),
+                ('user_updated', models.ForeignKey(blank=True, db_column='UserUpdatedUUID', db_constraint=False, null=True, on_delete=django.db.models.deletion.DO_NOTHING, related_name='+', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'historical Activity',
+                'verbose_name_plural': 'historical Activities',
+                'ordering': ('-history_date', '-history_id'),
+                'get_latest_by': ('history_date', 'history_id'),
+            },
+            bases=(simple_history.models.HistoricalChanges, models.Model),
+        ),
+        migrations.CreateModel(
+            name='Activity',
+            fields=[
+                ('id', models.UUIDField(db_column='UUID', default=None, editable=False, primary_key=True, serialize=False)),
+                ('is_deleted', models.BooleanField(db_column='isDeleted', default=False)),
+                ('json_ext', models.JSONField(blank=True, db_column='Json_ext', null=True)),
+                ('date_created', core.fields.DateTimeField(db_column='DateCreated', default=datetime.datetime.now, null=True)),
+                ('date_updated', core.fields.DateTimeField(db_column='DateUpdated', default=datetime.datetime.now, null=True)),
+                ('version', models.IntegerField(default=1)),
+                ('date_valid_from', core.fields.DateTimeField(db_column='DateValidFrom', default=datetime.datetime.now)),
+                ('date_valid_to', core.fields.DateTimeField(blank=True, db_column='DateValidTo', null=True)),
+                ('replacement_uuid', models.UUIDField(blank=True, db_column='ReplacementUUID', null=True)),
+                ('name', models.CharField(max_length=255, unique=True)),
+                ('user_created', models.ForeignKey(db_column='UserCreatedUUID', on_delete=django.db.models.deletion.DO_NOTHING, related_name='%(class)s_user_created', to=settings.AUTH_USER_MODEL)),
+                ('user_updated', models.ForeignKey(db_column='UserUpdatedUUID', on_delete=django.db.models.deletion.DO_NOTHING, related_name='%(class)s_user_updated', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'Activity',
+                'verbose_name_plural': 'Activities',
+            },
+            bases=(dirtyfields.dirtyfields.DirtyFieldsMixin, models.Model),
+        ),
         migrations.CreateModel(
             name='Project',
             fields=[
@@ -80,5 +146,15 @@ class Migration(migrations.Migration):
                 'get_latest_by': ('history_date', 'history_id'),
             },
             bases=(simple_history.models.HistoricalChanges, models.Model),
+        ),
+        migrations.AlterField(
+            model_name='historicalproject',
+            name='status',
+            field=models.CharField(choices=[('PREPARATION', 'PREPARATION'), ('IN_PROGRESS', 'IN PROGRESS'), ('COMPLETED', 'COMPLETED')], default='PREPARATION', max_length=100),
+        ),
+        migrations.AlterField(
+            model_name='project',
+            name='status',
+            field=models.CharField(choices=[('PREPARATION', 'PREPARATION'), ('IN_PROGRESS', 'IN PROGRESS'), ('COMPLETED', 'COMPLETED')], default='PREPARATION', max_length=100),
         ),
     ]

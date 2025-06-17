@@ -352,6 +352,9 @@ def export_beneficiaries_excel(request):
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         
+        # Add ordering to prevent pagination warning
+        queryset = queryset.order_by('-date_created', 'id')
+        
         # Get base URL from request
         base_url = request.build_absolute_uri('/').rstrip('/')
         
