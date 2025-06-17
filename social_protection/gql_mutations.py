@@ -9,14 +9,12 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
 from core.schema import OpenIMISMutation
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
-    BenefitPlan,
-    Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation, LocationBenefitPlanPaymentPoint
+    BenefitPlan, Project, Activity,
+    Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation, LocationBenefitPlanPaymentPoint,
 )
 from social_protection.services import (
-    BenefitPlanService,
+    BenefitPlanService, ProjectService,
     BeneficiaryService, GroupBeneficiaryService, LocationBenefitPlanPaymentPointService,
-    BenefitPlan, Project, Activity,
-    Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation
 )
 from social_protection.services import (
     BenefitPlanService, ProjectService,
