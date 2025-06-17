@@ -1022,3 +1022,6 @@ class UndoDeleteProjectMutation(BaseHistoryModelDeleteMutationMixin, BaseMutatio
                 res = service.undo_delete({"id": obj_id})
                 if not res["success"]:
                     return res
+
+    class Input(OpenIMISMutation.Input):
+        ids = graphene.List(graphene.UUID)
