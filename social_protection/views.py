@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from core.utils import DefaultStorageFileHandler
-from im_export.views import check_user_rights
+from core.views import check_user_rights
 from individual.apps import IndividualConfig
 from individual.models import IndividualDataSource
 from social_protection.apps import SocialProtectionConfig

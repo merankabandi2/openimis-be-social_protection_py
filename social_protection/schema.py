@@ -23,25 +23,38 @@ from social_protection.gql_mutations import (
     DeleteGroupBeneficiaryMutation, CreateLocationBenefitPlanPaymentPointMutation, 
     UpdateLocationBenefitPlanPaymentPointMutation, DeleteLocationBenefitPlanPaymentPointMutation,
     BulkUpdateBeneficiaryStatusMutation, BulkUpdateGroupBeneficiaryStatusMutation,
-    CSVUpdateGroupBeneficiaryStatusMutation
+    CSVUpdateGroupBeneficiaryStatusMutation,
+    DeleteGroupBeneficiaryMutation,
+    CreateProjectMutation,
+    UpdateProjectMutation,
+    DeleteProjectMutation,
+    UndoDeleteProjectMutation,
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
     BeneficiaryGQLType,
     BenefitPlanLocationGQLType, GroupBeneficiaryGQLType,
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
-    BenefitPlanHistoryGQLType, LocationBenefitPlanPaymentPointGQLType
+    BenefitPlanHistoryGQLType, LocationBenefitPlanPaymentPointGQLType,
+    BenefitPlanHistoryGQLType,
+    ActivityGQLType, ProjectGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
     BeneficiaryStatus,
     BenefitPlan,
-    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords, LocationBenefitPlanPaymentPoint
+    Beneficiary, GroupBeneficiary, BenefitPlanDataUploadRecords, LocationBenefitPlanPaymentPoint,
+    Activity,
+    Project,
 )
-from social_protection.validation import validate_bf_unique_code, validate_bf_unique_name
+from social_protection.validation import (
+    validate_bf_unique_code,
+    validate_bf_unique_name,
+    validate_project_unique_name,
+)
 import graphene_django_optimizer as gql_optimizer
 from location.apps import LocationConfig
-from location.models import Location
+from location.models import extend_allowed_locations, Location
 
 
 def patch_details(beneficiary_df: pd.DataFrame):
@@ -169,6 +182,29 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         client_mutation_id=graphene.String(),
         location_id=graphene.String(),
         benefit_plan_id=graphene.String(),
+    )
+
+    activity = OrderedDjangoFilterConnectionField(
+        ActivityGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+    )
+
+    project = OrderedDjangoFilterConnectionField(
+        ProjectGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        applyDefaultValidityFilter=graphene.Boolean(),
+        client_mutation_id=graphene.String(),
+        parent_location=graphene.String(),
+        parent_location_level=graphene.Int(),
+    )
+
+    project_name_validity = graphene.Field(
+        ValidationMessageGQLType,
+        project_name=graphene.String(required=True),
+        benefit_plan_id=graphene.String(required=True),
+        description="Checks that the specified Project name is valid"
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -484,7 +520,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         if sort_alphabetically:
             query = query.order_by('code')
         return gql_optimizer.query(query, info)
-    
+
     @staticmethod
     def _get_location_filters(parent_location, parent_location_level, prefix=""):
         query_key = "uuid"
@@ -634,6 +670,46 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         query = LocationBenefitPlanPaymentPoint.objects.filter(*filters)
         return gql_optimizer.query(query, info)
 
+    def resolve_activity(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_activity_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+        query = Activity.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+    def resolve_project(self, info, **kwargs):
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_project_search_perms
+        )
+
+        filters = append_validity_filter(**kwargs)
+
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        parent_location = kwargs.get('parent_location')
+        if parent_location is not None:
+            location = Location.objects.get(uuid=parent_location)
+            descendant_ids = extend_allowed_locations([location.pk])
+            filters.append(Q(location__id__in=descendant_ids))
+
+        query = Project.objects.filter(*filters)
+        return gql_optimizer.query(query, info)
+
+    def resolve_project_name_validity(self, info, **kwargs):
+        if not info.context.user.has_perms(SocialProtectionConfig.gql_project_search_perms):
+            raise PermissionDenied(_("unauthorized"))
+        errors = validate_project_unique_name(kwargs['project_name'], kwargs['benefit_plan_id'])
+        if errors:
+            return ValidationMessageGQLType(False, error_message=errors[0]['message'])
+        else:
+            return ValidationMessageGQLType(True)
 
 class Mutation(graphene.ObjectType):
     create_benefit_plan = CreateBenefitPlanMutation.Field()
@@ -655,3 +731,8 @@ class Mutation(graphene.ObjectType):
     create_location_benefit_plan_payment_point = CreateLocationBenefitPlanPaymentPointMutation.Field()
     update_location_benefit_plan_payment_point = UpdateLocationBenefitPlanPaymentPointMutation.Field()
     delete_location_benefit_plan_payment_point = DeleteLocationBenefitPlanPaymentPointMutation.Field()
+
+    create_project = CreateProjectMutation.Field()
+    update_project = UpdateProjectMutation.Field()
+    delete_project = DeleteProjectMutation.Field()
+    undo_delete_project = UndoDeleteProjectMutation.Field()

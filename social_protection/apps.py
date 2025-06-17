@@ -18,6 +18,11 @@ DEFAULT_CONFIG = {
     "gql_schema_create_perms": ["171002"],
     "gql_schema_update_perms": ["171003"],
     "gql_schema_delete_perms": ["171004"],
+    "gql_activity_search_perms": ["208001"],
+    "gql_project_search_perms": ["209001"],
+    "gql_project_create_perms": ["209002"],
+    "gql_project_update_perms": ["209003"],
+    "gql_project_delete_perms": ["209004"],
 
 
     # Create task for model instead of performing crud action
@@ -62,6 +67,7 @@ DEFAULT_CONFIG = {
 class SocialProtectionConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'social_protection'
+    verbose_name = 'Social Protection'
 
     gql_benefit_plan_search_perms = None
     gql_benefit_plan_create_perms = None
@@ -76,6 +82,11 @@ class SocialProtectionConfig(AppConfig):
     gql_schema_create_perms = None
     gql_schema_update_perms = None
     gql_schema_delete_perms = None
+    gql_activity_search_perms = None
+    gql_project_search_perms = None
+    gql_project_create_perms = None
+    gql_project_update_perms = None
+    gql_project_delete_perms = None
 
     gql_check_benefit_plan_update = None
     gql_check_beneficiary_crud = None

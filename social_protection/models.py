@@ -109,6 +109,35 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
         return queryset.filter(group__in=group_queryset)
 
 
+class Activity(core_models.HistoryBusinessModel):
+    name = models.CharField(max_length=255, null=False, unique=True)
+
+    class Meta:
+        verbose_name = "Activity"
+        verbose_name_plural = "Activities"
+
+
+class ProjectStatus(models.TextChoices):
+    PREPARATION = "PREPARATION", _("PREPARATION")
+    IN_PROGRESS = "IN_PROGRESS", _("IN PROGRESS")
+    COMPLETED = "COMPLETED", _("COMPLETED")
+
+
+class Project(core_models.HistoryBusinessModel):
+    benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
+    name = models.CharField(max_length=255, null=False)
+    status = models.CharField(
+        max_length=100,
+        choices=ProjectStatus.choices,
+        default=ProjectStatus.PREPARATION,
+        null=False
+    )
+    activity = models.ForeignKey(Activity, models.DO_NOTHING, null=False)
+    location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
+    target_beneficiaries = models.SmallIntegerField(null=False)
+    working_days = models.SmallIntegerField(null=False)
+
+
 class JSONUpdate(Func):
     function = 'JSONB_SET'
     arity = 3
