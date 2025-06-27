@@ -45,16 +45,53 @@ class BenefitPlanMutation(UUIDModel, ObjectMutation):
     mutation = models.ForeignKey(MutationLog, models.DO_NOTHING, related_name='benefit_plan')
 
 
+class Activity(core_models.HistoryBusinessModel):
+    name = models.CharField(max_length=255, null=False, unique=True)
+
+    class Meta:
+        verbose_name = "Activity"
+        verbose_name_plural = "Activities"
+
+
+class ProjectStatus(models.TextChoices):
+    PREPARATION = "PREPARATION", _("PREPARATION")
+    IN_PROGRESS = "IN_PROGRESS", _("IN PROGRESS")
+    COMPLETED = "COMPLETED", _("COMPLETED")
+
+
+class Project(core_models.HistoryBusinessModel):
+    benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
+    name = models.CharField(max_length=255, null=False)
+    status = models.CharField(
+        max_length=100,
+        choices=ProjectStatus.choices,
+        default=ProjectStatus.PREPARATION,
+        null=False
+    )
+    activity = models.ForeignKey(Activity, models.DO_NOTHING, null=False)
+    location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
+    target_beneficiaries = models.SmallIntegerField(null=False)
+    working_days = models.SmallIntegerField(null=False)
+
+
 class Beneficiary(core_models.HistoryBusinessModel):
     individual = models.ForeignKey(Individual, models.DO_NOTHING, null=False)
     benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
     status = models.CharField(max_length=100, choices=BeneficiaryStatus.choices, null=False)
+    project = models.ForeignKey(Project, models.DO_NOTHING, null=True, blank=True, related_name="beneficiaries")
 
     json_ext = models.JSONField(db_column="Json_ext", blank=True, default=dict)
 
     def clean(self):
         if self.benefit_plan.type != BenefitPlan.BenefitPlanType.INDIVIDUAL_TYPE:
             raise ValidationError(_("Beneficiary must be associated with an individual benefit plan."))
+
+        if self.project:
+            if self.status != BeneficiaryStatus.ACTIVE:
+                raise ValidationError(_("Only ACTIVE beneficiaries can be assigned to a project."))
+            if self.project.benefit_plan_id != self.benefit_plan_id:
+                raise ValidationError(_("Beneficiary and project must belong to the same program."))
+
         super().clean()
 
     def __str__(self):
@@ -86,12 +123,19 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
     group = models.ForeignKey(Group, models.DO_NOTHING, null=False)
     benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
     status = models.CharField(max_length=100, choices=BeneficiaryStatus.choices, null=False)
+    project = models.ForeignKey(Project, models.DO_NOTHING, null=True, blank=True, related_name="group_beneficiaries")
 
     json_ext = models.JSONField(db_column="Json_ext", blank=True, default=dict)
 
     def clean(self):
         if self.benefit_plan.type != BenefitPlan.BenefitPlanType.GROUP_TYPE:
             raise ValidationError(_("Group beneficiary must be associated with a benefit plan type = GROUP."))
+
+        if self.project:
+            if self.status != BeneficiaryStatus.ACTIVE:
+                raise ValidationError(_("Only ACTIVE group beneficiaries can be assigned to a project."))
+            if self.project.benefit_plan_id != self.benefit_plan_id:
+                raise ValidationError(_("Group beneficiary and project must belong to the same program."))
 
         super().clean()
     
@@ -106,35 +150,6 @@ class GroupBeneficiary(core_models.HistoryBusinessModel):
     
         group_queryset = Group.get_queryset(groups, user)
         return queryset.filter(group__in=group_queryset)
-
-
-class Activity(core_models.HistoryBusinessModel):
-    name = models.CharField(max_length=255, null=False, unique=True)
-
-    class Meta:
-        verbose_name = "Activity"
-        verbose_name_plural = "Activities"
-
-
-class ProjectStatus(models.TextChoices):
-    PREPARATION = "PREPARATION", _("PREPARATION")
-    IN_PROGRESS = "IN_PROGRESS", _("IN PROGRESS")
-    COMPLETED = "COMPLETED", _("COMPLETED")
-
-
-class Project(core_models.HistoryBusinessModel):
-    benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
-    name = models.CharField(max_length=255, null=False)
-    status = models.CharField(
-        max_length=100,
-        choices=ProjectStatus.choices,
-        default=ProjectStatus.PREPARATION,
-        null=False
-    )
-    activity = models.ForeignKey(Activity, models.DO_NOTHING, null=False)
-    location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
-    target_beneficiaries = models.SmallIntegerField(null=False)
-    working_days = models.SmallIntegerField(null=False)
 
 
 class JSONUpdate(Func):
