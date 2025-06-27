@@ -32,6 +32,7 @@ from social_protection.gql_queries import (
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
     BenefitPlanHistoryGQLType,
     ActivityGQLType, ProjectGQLType,
+    ProjectHistoryGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
@@ -179,6 +180,14 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         project_name=graphene.String(required=True),
         benefit_plan_id=graphene.String(required=True),
         description="Checks that the specified Project name is valid"
+    )
+
+    project_history = OrderedDjangoFilterConnectionField(
+        ProjectHistoryGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        client_mutation_id=graphene.String(),
+        search=graphene.String(),
+        sort_alphabetically=graphene.Boolean(),
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -544,6 +553,35 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             return ValidationMessageGQLType(False, error_message=errors[0]['message'])
         else:
             return ValidationMessageGQLType(True)
+
+    def resolve_project_history(self, info, **kwargs):
+        filters = []
+
+        search = kwargs.get("search", None)
+        if search:
+            search_terms = search.split(' ')
+            search_queries = Q()
+            for term in search_terms:
+                search_queries |= Q(name__icontains=term)
+            filters.append(search_queries)
+
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_project_search_perms
+        )
+
+        query = Project.history.filter(*filters)
+
+        sort_alphabetically = kwargs.get("sort_alphabetically", None)
+        if sort_alphabetically:
+            query = query.order_by('name')
+        return gql_optimizer.query(query, info)
+
 
 
 class Mutation(graphene.ObjectType):
