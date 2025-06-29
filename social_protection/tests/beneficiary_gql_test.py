@@ -12,6 +12,7 @@ from graphql_jwt.shortcuts import get_token
 from social_protection.tests.test_helpers import create_benefit_plan,\
         create_individual, add_individual_to_benefit_plan, create_project
 from social_protection.services import BeneficiaryService
+from location.test_helpers import create_test_village
 import json
 
 class BeneficiaryGQLTest(openIMISGraphQLTestCase):
@@ -390,3 +391,49 @@ class BeneficiaryGQLTest(openIMISGraphQLTestCase):
         self.assertEqual(returned_node['individual']['firstName'], self.individual.first_name)
         self.assertEqual(returned_node['status'], 'ACTIVE')
         self.assertEqual(returned_node['project']['name'], project.name)
+
+    def test_query_beneficiary_village_or_child_of_filter(self):
+        child_village = create_test_village({'code': 'BeneV1', 'name': 'Beneficiary Village 1'})
+        parent_location = child_village.parent.parent
+
+        # Create a new individual in the test village and enroll them
+        village_individual = create_individual(self.user.username, payload_override={
+            "first_name": "VillagePerson",
+            "location_id": child_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, village_individual, self.benefit_plan)
+
+        # Create a control individual elsewhere
+        another_village = create_test_village({'code': 'BeneV2', 'name': 'Beneficiary Village 2'})
+        other_individual = create_individual(self.user.username, payload_override={
+            "first_name": "OtherPerson",
+            "location_id": another_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, other_individual, self.benefit_plan)
+
+        # Run the query with villageOrChildOf = parent district ID
+        query_str = f"""
+        query {{
+          beneficiary(
+            benefitPlan_Id: "{self.benefit_plan.uuid}",
+            villageOrChildOf: {parent_location.id},
+            isDeleted: false,
+            first: 10
+          ) {{
+            totalCount
+            edges {{
+              node {{
+                individual {{
+                  firstName
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+
+        self.assertEqual(data['totalCount'], 1)
+        self.assertEqual(data['edges'][0]['node']['individual']['firstName'], "VillagePerson")

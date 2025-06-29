@@ -100,6 +100,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         dateValidTo__Lte=graphene.DateTime(),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        village_or_child_of=graphene.Int(), # improved version of parent_location + parent_location_level query
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
         customFilters=graphene.List(of_type=graphene.String),
@@ -322,11 +323,19 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             )
 
         filters = _build_filters(info, **kwargs)
-        
+
         parent_location = kwargs.get('parent_location')
         parent_location_level = kwargs.get('parent_location_level')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='individual__'))
+
+        village_id = kwargs.pop("village_or_child_of", None)
+        if village_id is not None:
+            village_ids = [v.id for v in Location.objects.children(village_id, loc_type="V")]
+            root = Location.objects.get(id=village_id)
+            if root.type == "V":
+                village_ids.append(root.id)
+            filters.append(Q(individual__location_id__in=village_ids))
 
         query = Beneficiary.get_queryset(None, info.context.user)
         query = _apply_custom_filters(query.filter(*filters), **kwargs)
