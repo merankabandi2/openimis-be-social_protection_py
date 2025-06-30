@@ -597,3 +597,29 @@ class UndoDeleteProjectMutation(BaseHistoryModelDeleteMutationMixin, BaseMutatio
 
     class Input(OpenIMISMutation.Input):
         ids = graphene.List(graphene.UUID)
+
+
+class ProjectEnrollmentMutation(BaseHistoryModelDeleteMutationMixin, BaseMutation):
+    _mutation_class = "ProjectEnrollmentMutation"
+    _mutation_module = "social_protection"
+    _model = Beneficiary
+
+    @classmethod
+    def _validate_mutation(cls, user, **data):
+        super()._validate_mutation(user, **data)
+        if not user.has_perms(
+                SocialProtectionConfig.gql_project_update_perms):
+            raise PermissionDenied(_("unauthorized"))
+
+    @classmethod
+    def _mutate(cls, user, **data):
+        if "client_mutation_id" in data:
+            data.pop('client_mutation_id')
+        if "client_mutation_label" in data:
+            data.pop('client_mutation_label')
+
+        return BeneficiaryService(user).enroll_project(data)
+
+    class Input(OpenIMISMutation.Input):
+        ids = graphene.List(graphene.UUID)
+        project_id = graphene.UUID(required=True)

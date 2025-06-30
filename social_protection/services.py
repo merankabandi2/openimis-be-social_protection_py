@@ -127,6 +127,21 @@ class BeneficiaryService(BaseService, CheckerLogicServiceMixin):
     def delete(self, obj_data):
         return super().delete(obj_data)
 
+    @register_service_signal('beneficiary_service.enroll_project')
+    def enroll_project(self, obj_data):
+        project_id = obj_data['project_id']
+        enroll_ids = obj_data.get('ids', [])
+        unenroll_ids = Beneficiary.objects.filter(project_id=project_id)\
+                .exclude(id__in=enroll_ids).values_list('id', flat=True)
+        with transaction.atomic():
+            try:
+                for id in unenroll_ids:
+                    super().update({ 'id': id, 'project_id': None })
+                for id in enroll_ids:
+                    super().update({ 'id': id, 'project_id': project_id })
+            except Exception as exc:
+                return output_exception(model_name=self.OBJECT_TYPE.__name__, method="update", exception=exc)
+
     def _business_data_serializer(self, data):
         def serialize(key, value):
             if key == 'id':
