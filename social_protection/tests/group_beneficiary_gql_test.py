@@ -1,7 +1,7 @@
 from unittest import mock
 import graphene
 from core.models import User
-from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from core.models.openimis_graphql_test_case import BaseTestContext
 from core.test_helpers import create_test_interactive_user
 from social_protection import schema as sp_schema
 from graphene import Schema
@@ -9,12 +9,20 @@ from graphene.test import Client
 from graphene_django.utils.testing import GraphQLTestCase
 from django.conf import settings
 from graphql_jwt.shortcuts import get_token
-from social_protection.tests.test_helpers import create_benefit_plan,\
-        create_group_with_individual, add_group_to_benefit_plan, create_individual, add_individual_to_group
+from social_protection.tests.test_helpers import (
+    PatchedOpenIMISGraphQLTestCase,
+    create_benefit_plan,
+    create_group_with_individual,
+    add_group_to_benefit_plan,
+    create_individual,
+    add_individual_to_group,
+    create_project,
+)
 from social_protection.services import GroupBeneficiaryService
+from location.test_helpers import create_test_village
 import json
 
-class GroupBeneficiaryGQLTest(openIMISGraphQLTestCase):
+class GroupBeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
     schema = Schema(query=sp_schema.Query)
 
 
@@ -323,3 +331,79 @@ class GroupBeneficiaryGQLTest(openIMISGraphQLTestCase):
         eligible_beneficiary = beneficiary_data['edges'][0]['node']
         self.assertFalse(eligible_beneficiary['isEligible'])
         self.assertEqual(self.group_1child.code, eligible_beneficiary['group']['code'])
+
+    def test_query_group_beneficiary_village_or_child_of_filter(self):
+        child_village = create_test_village({'code': 'BeneV1', 'name': 'Beneficiary Village 1'})
+        parent_location = child_village.parent
+
+        # Create a new group in the test village and enroll them
+        _, village_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "VillageGroup",
+            "location_id": child_village.id,
+        })
+        add_group_to_benefit_plan(self.service, village_group, self.benefit_plan)
+
+        # Create a control group elsewhere
+        another_village = create_test_village({'code': 'BeneV2', 'name': 'Beneficiary Village 2'})
+        _, other_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "OtherGroup",
+            "location_id": another_village.id,
+        })
+        add_group_to_benefit_plan(self.service, other_group, self.benefit_plan)
+
+        # Run the query with villageOrChildOf = parent district ID
+        query_str = f"""
+        query {{
+          groupBeneficiary(
+            benefitPlan_Id: "{self.benefit_plan.uuid}",
+            villageOrChildOf: {parent_location.id},
+            isDeleted: false,
+            first: 10
+          ) {{
+            totalCount
+            edges {{
+              node {{
+                group {{
+                  code
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+
+        self.assertEqual(data['totalCount'], 1)
+        self.assertEqual(data['edges'][0]['node']['group']['code'], "VillageGroup")
+
+    def test_project_beneficiary_enrollment(self):
+        project = create_project(
+            'test enrollment project',
+            self.benefit_plan,
+            self.user.username,
+        )
+
+        query_str = f'''
+            mutation {{
+              enrollGroupProject(
+                input: {{
+                  ids: ["{self.group_1child.id}", "{self.group_2child.id}"]
+                  projectId: "{str(project.id)}"
+                }}
+              ) {{
+                clientMutationId
+                internalId
+              }}
+            }}
+        '''
+        response = self.query(
+            query_str,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+
+        content = json.loads(response.content)
+        internal_id = content['data']['enrollGroupProject']['internalId']
+        self.assert_mutation_success(internal_id, self.user_token)

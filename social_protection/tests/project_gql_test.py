@@ -462,3 +462,114 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         data = json.loads(response.content)['data']['undoDeleteProject']
         self.assert_mutation_error(data['internalId'], self.user_token, "does not exist")
 
+    def test_project_history_query_success(self):
+        query = """
+        query {
+          projectHistory(first: 10) {
+            totalCount
+            edges {
+              node {
+                uuid
+                name
+                status
+                isDeleted
+                version
+              }
+            }
+          }
+        }
+        """
+        response = self.query(
+            query,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+        content = json.loads(response.content)["data"]["projectHistory"]
+        self.assertGreaterEqual(content["totalCount"], 1)
+        names = [edge["node"]["name"] for edge in content["edges"]]
+        self.assertIn("Village Health Project A", names)
+
+    def test_project_history_query_filter_is_deleted(self):
+        query = """
+        query {
+          projectHistory(isDeleted: true, first: 10) {
+            edges {
+              node {
+                name
+                isDeleted
+              }
+            }
+          }
+        }
+        """
+        response = self.query(
+            query,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)["data"]["projectHistory"]["edges"]
+        self.assertTrue(any(e["node"]["name"] == "Deleted Project" for e in edges))
+        self.assertTrue(all(e["node"]["isDeleted"] for e in edges))
+
+    def test_project_history_query_unauthorized(self):
+        query = """
+        query {
+          projectHistory(first: 5) {
+            totalCount
+          }
+        }
+        """
+        # Anonymous
+        response = self.query(query)
+        content = json.loads(response.content)
+        self.assertEqual(content['errors'][0]['message'], 'Unauthorized')
+
+        # Unprivileged user
+        response = self.query(
+            query,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.test_officer_token}"}
+        )
+        content = json.loads(response.content)
+        self.assertEqual(content['errors'][0]['message'], 'Unauthorized')
+
+    def test_project_history_query_search(self):
+        query = """
+        query {
+          projectHistory(search: "Health A", first: 10) {
+            edges {
+              node {
+                name
+              }
+            }
+          }
+        }
+        """
+        response = self.query(
+            query,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)["data"]["projectHistory"]["edges"]
+        names = [e["node"]["name"] for e in edges]
+        self.assertTrue(any("Village Health Project A" in name for name in names))
+
+    def test_project_history_query_sort_alphabetically(self):
+        query = """
+        query {
+          projectHistory(sortAlphabetically: true, first: 10) {
+            edges {
+              node {
+                name
+              }
+            }
+          }
+        }
+        """
+        response = self.query(
+            query,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)["data"]["projectHistory"]["edges"]
+        names = [e["node"]["name"] for e in edges]
+        self.assertEqual(names, sorted(names))

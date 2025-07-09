@@ -11,7 +11,7 @@ from social_protection.tests.data import (
 )
 from core.test_helpers import LogInHelper
 from social_protection.tests.test_helpers import (
-    create_benefit_plan, create_group
+    create_benefit_plan, create_group, create_project,
 )
 from datetime import datetime
 
@@ -146,3 +146,40 @@ class GroupBeneficiaryServiceTest(TestCase):
         self.assertTrue(result.get('success', False), result.get('detail', "No details provided"))
         query = self.query_all.filter(uuid=uuid)
         self.assertEqual(query.count(), 0)
+
+    def test_enroll_project(self):
+        uuid1 = self.add_beneficiary_return_uuid(self.group, self.benefit_plan_no_max)
+        uuid2 = self.add_beneficiary_return_uuid(self.group2, self.benefit_plan_no_max)
+
+        project = create_project(
+            'test enrollment project',
+            self.benefit_plan,
+            self.user.username,
+        )
+
+        payload = {
+            'ids': [uuid1, uuid2],
+            'project_id': str(project.id),
+        }
+
+        self.service.enroll_project(payload)
+
+        # Check that both beneficiaries are enrolled into the test project
+        beneficiaries = GroupBeneficiary.objects.filter(id__in=[uuid1, uuid2])
+        self.assertEqual(beneficiaries.count(), 2)
+        for beneficiary in beneficiaries:
+            self.assertEqual(beneficiary.project_id, project.id)
+            self.assertEqual(beneficiary.benefit_plan_id, self.benefit_plan_no_max.id)
+
+        payload = {
+            'ids': [uuid1],
+            'project_id': str(project.id),
+        }
+
+        self.service.enroll_project(payload)
+
+        # Check that only the first beneficiary is enrolled into the test project
+        beneficiaries = GroupBeneficiary.objects.filter(project_id=project.id)
+        self.assertEqual(beneficiaries.count(), 1)
+        beneficiary = beneficiaries.first()
+        self.assertEqual(str(beneficiary.id), uuid1)

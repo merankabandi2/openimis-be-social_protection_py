@@ -25,6 +25,8 @@ from social_protection.gql_mutations import (
     UpdateProjectMutation,
     DeleteProjectMutation,
     UndoDeleteProjectMutation,
+    ProjectEnrollmentMutation,
+    ProjectGroupEnrollmentMutation,
 )
 from social_protection.gql_queries import (
     BenefitPlanGQLType,
@@ -32,6 +34,7 @@ from social_protection.gql_queries import (
     BenefitPlanDataUploadQGLType, BenefitPlanSchemaFieldsGQLType,
     BenefitPlanHistoryGQLType,
     ActivityGQLType, ProjectGQLType,
+    ProjectHistoryGQLType,
 )
 from social_protection.export_mixin import ExportableSocialProtectionQueryMixin
 from social_protection.models import (
@@ -99,6 +102,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         dateValidTo__Lte=graphene.DateTime(),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        village_or_child_of=graphene.Int(), # improved version of parent_location + parent_location_level query
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
         customFilters=graphene.List(of_type=graphene.String),
@@ -110,6 +114,7 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         dateValidTo__Lte=graphene.DateTime(),
         parent_location=graphene.String(),
         parent_location_level=graphene.Int(),
+        village_or_child_of=graphene.Int(), # improved version of parent_location + parent_location_level query
         applyDefaultValidityFilter=graphene.Boolean(),
         client_mutation_id=graphene.String(),
         customFilters=graphene.List(of_type=graphene.String),
@@ -179,6 +184,14 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         project_name=graphene.String(required=True),
         benefit_plan_id=graphene.String(required=True),
         description="Checks that the specified Project name is valid"
+    )
+
+    project_history = OrderedDjangoFilterConnectionField(
+        ProjectHistoryGQLType,
+        orderBy=graphene.List(of_type=graphene.String),
+        client_mutation_id=graphene.String(),
+        search=graphene.String(),
+        sort_alphabetically=graphene.Boolean(),
     )
 
     def resolve_bf_code_validity(self, info, **kwargs):
@@ -313,11 +326,15 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             )
 
         filters = _build_filters(info, **kwargs)
-        
+
         parent_location = kwargs.get('parent_location')
         parent_location_level = kwargs.get('parent_location_level')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='individual__'))
+
+        location_id = kwargs.pop("village_or_child_of", None)
+        if location_id is not None:
+            filters.append(Query._get_location_filters_v2(location_id, 'individual'))
 
         query = Beneficiary.get_queryset(None, info.context.user)
         query = _apply_custom_filters(query.filter(*filters), **kwargs)
@@ -396,6 +413,10 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         parent_location_level = kwargs.get('parent_location_level')
         if parent_location is not None and parent_location_level is not None:
             filters.append(Query._get_location_filters(parent_location, parent_location_level, prefix='group__'))
+
+        location_id = kwargs.pop("village_or_child_of", None)
+        if location_id is not None:
+            filters.append(Query._get_location_filters_v2(location_id, 'group'))
 
         query = GroupBeneficiary.get_queryset(None, info.context.user)
         query = _apply_custom_filters(query.filter(*filters), **kwargs)
@@ -504,6 +525,15 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         query_key = prefix + "location__" + query_key
         return Q(**{query_key: parent_location})
 
+    @staticmethod
+    def _get_location_filters_v2(location_id, prefix):
+        village_ids = [v.id for v in Location.objects.children(location_id, loc_type="V")]
+        root = Location.objects.get(id=location_id)
+        if root.type == "V":
+            village_ids.append(root.id)
+        query_key = prefix + "__location_id__in"
+        return Q(**{query_key: village_ids})
+
     def resolve_activity(self, info, **kwargs):
         Query._check_permissions(
             info.context.user,
@@ -545,6 +575,35 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
         else:
             return ValidationMessageGQLType(True)
 
+    def resolve_project_history(self, info, **kwargs):
+        filters = []
+
+        search = kwargs.get("search", None)
+        if search:
+            search_terms = search.split(' ')
+            search_queries = Q()
+            for term in search_terms:
+                search_queries |= Q(name__icontains=term)
+            filters.append(search_queries)
+
+        client_mutation_id = kwargs.get("client_mutation_id", None)
+        if client_mutation_id:
+            wait_for_mutation(client_mutation_id)
+            filters.append(Q(mutations__mutation__client_mutation_id=client_mutation_id))
+
+        Query._check_permissions(
+            info.context.user,
+            SocialProtectionConfig.gql_project_search_perms
+        )
+
+        query = Project.history.filter(*filters)
+
+        sort_alphabetically = kwargs.get("sort_alphabetically", None)
+        if sort_alphabetically:
+            query = query.order_by('name')
+        return gql_optimizer.query(query, info)
+
+
 
 class Mutation(graphene.ObjectType):
     create_benefit_plan = CreateBenefitPlanMutation.Field()
@@ -564,4 +623,6 @@ class Mutation(graphene.ObjectType):
     update_project = UpdateProjectMutation.Field()
     delete_project = DeleteProjectMutation.Field()
     undo_delete_project = UndoDeleteProjectMutation.Field()
+    enroll_project = ProjectEnrollmentMutation.Field()
+    enroll_group_project = ProjectGroupEnrollmentMutation.Field()
 

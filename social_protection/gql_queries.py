@@ -76,6 +76,7 @@ class BeneficiaryFilter(django_filters.FilterSet):
             "date_valid_to": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("individual__", IndividualGQLType._meta.filter_fields),
             **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+            'project__id': ['exact'],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
             "is_deleted": ["exact"],
@@ -112,6 +113,7 @@ class GroupBeneficiaryFilter(django_filters.FilterSet):
             "date_valid_to": ["exact", "lt", "lte", "gt", "gte"],
             **prefix_filterset("group__", GroupGQLType._meta.filter_fields),
             **prefix_filterset("benefit_plan__", BenefitPlanGQLType._meta.filter_fields),
+            'project__id': ['exact'],
             "date_created": ["exact", "lt", "lte", "gt", "gte"],
             "date_updated": ["exact", "lt", "lte", "gt", "gte"],
             "is_deleted": ["exact"],
@@ -253,4 +255,30 @@ class ProjectGQLType(DjangoObjectType, JsonExtMixin):
         model = Project
         interfaces = (graphene.relay.Node,)
         filterset_class = ProjectFilter
+        connection_class = ExtendedConnection
+
+
+class ProjectHistoryGQLType(DjangoObjectType):
+    uuid = graphene.String(source='uuid')
+
+    def resolve_user_updated(self, info):
+        return self.user_updated
+
+    class Meta:
+        model = Project.history.model
+        interfaces = (graphene.relay.Node,)
+        filter_fields = {
+            "id": ["exact"],
+            "name": ["exact", "iexact", "startswith", "istartswith", "contains", "icontains"],
+            'status': ['exact', 'icontains'],
+            'benefit_plan__id': ['exact'],
+            'activity__id': ['exact'],
+            'location__id': ['exact'],
+            'target_beneficiaries': ['exact', 'gte', 'lte'],
+            'working_days': ['exact', 'gte', 'lte'],
+            "date_created": ["exact", "lt", "lte", "gt", "gte"],
+            "date_updated": ["exact", "lt", "lte", "gt", "gte"],
+            "is_deleted": ["exact"],
+            "version": ["exact"],
+        }
         connection_class = ExtendedConnection

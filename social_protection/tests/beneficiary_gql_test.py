@@ -1,7 +1,7 @@
 from unittest import mock
 import graphene
 from core.models import User
-from core.models.openimis_graphql_test_case import openIMISGraphQLTestCase, BaseTestContext
+from core.models.openimis_graphql_test_case import BaseTestContext
 from core.test_helpers import create_test_interactive_user
 from social_protection import schema as sp_schema
 from graphene import Schema
@@ -9,12 +9,18 @@ from graphene.test import Client
 from graphene_django.utils.testing import GraphQLTestCase
 from django.conf import settings
 from graphql_jwt.shortcuts import get_token
-from social_protection.tests.test_helpers import create_benefit_plan,\
-        create_individual, add_individual_to_benefit_plan
+from social_protection.tests.test_helpers import (
+    PatchedOpenIMISGraphQLTestCase,
+    create_benefit_plan,
+    create_individual,
+    add_individual_to_benefit_plan,
+    create_project,
+)
 from social_protection.services import BeneficiaryService
+from location.test_helpers import create_test_village
 import json
 
-class BeneficiaryGQLTest(openIMISGraphQLTestCase):
+class BeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
     schema = Schema(query=sp_schema.Query)
 
     class AnonymousUserContext:
@@ -342,3 +348,127 @@ class BeneficiaryGQLTest(openIMISGraphQLTestCase):
             e['node']['isEligible'] for e in beneficiary_data['edges']
         )
         self.assertTrue(all(eligible))
+
+    def test_query_beneficiary_project_filter(self):
+        # Enroll self.individual to a project
+        project = create_project(
+            'test enrollment project',
+            self.benefit_plan,
+            self.user.username,
+        )
+
+        # Link the project to the ACTIVE beneficiary
+        self.individual.beneficiary_set.filter(benefit_plan=self.benefit_plan).update(project=project)
+
+        # Query with projectId filter
+        query_str = f"""
+            query {{
+              beneficiary(
+                project_Id: "{project.uuid}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    id
+                    individual {{
+                      firstName
+                    }}
+                    project {{
+                      id
+                      name
+                    }}
+                    status
+                  }}
+                }}
+              }}
+            }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        response_data = json.loads(response.content)
+
+        beneficiary_data = response_data['data']['beneficiary']
+        self.assertEqual(beneficiary_data['totalCount'], 1)
+
+        returned_node = beneficiary_data['edges'][0]['node']
+        self.assertEqual(returned_node['individual']['firstName'], self.individual.first_name)
+        self.assertEqual(returned_node['status'], 'ACTIVE')
+        self.assertEqual(returned_node['project']['name'], project.name)
+
+    def test_query_beneficiary_village_or_child_of_filter(self):
+        child_village = create_test_village({'code': 'BeneV1', 'name': 'Beneficiary Village 1'})
+        parent_location = child_village.parent.parent
+
+        # Create a new individual in the test village and enroll them
+        village_individual = create_individual(self.user.username, payload_override={
+            "first_name": "VillagePerson",
+            "location_id": child_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, village_individual, self.benefit_plan)
+
+        # Create a control individual elsewhere
+        another_village = create_test_village({'code': 'BeneV2', 'name': 'Beneficiary Village 2'})
+        other_individual = create_individual(self.user.username, payload_override={
+            "first_name": "OtherPerson",
+            "location_id": another_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, other_individual, self.benefit_plan)
+
+        # Run the query with villageOrChildOf = parent district ID
+        query_str = f"""
+        query {{
+          beneficiary(
+            benefitPlan_Id: "{self.benefit_plan.uuid}",
+            villageOrChildOf: {parent_location.id},
+            isDeleted: false,
+            first: 10
+          ) {{
+            totalCount
+            edges {{
+              node {{
+                individual {{
+                  firstName
+                }}
+              }}
+            }}
+          }}
+        }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+
+        self.assertEqual(data['totalCount'], 1)
+        self.assertEqual(data['edges'][0]['node']['individual']['firstName'], "VillagePerson")
+
+    def test_project_beneficiary_enrollment(self):
+        project = create_project(
+            'test enrollment project',
+            self.benefit_plan,
+            self.user.username,
+        )
+
+        query_str = f'''
+            mutation {{
+              enrollProject(
+                input: {{
+                  ids: ["{self.individual_1child.id}", "{self.individual_2child.id}"]
+                  projectId: "{str(project.id)}"
+                }}
+              ) {{
+                clientMutationId
+                internalId
+              }}
+            }}
+        '''
+        response = self.query(
+            query_str,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+
+        content = json.loads(response.content)
+        internal_id = content['data']['enrollProject']['internalId']
+        self.assert_mutation_success(internal_id, self.user_token)
