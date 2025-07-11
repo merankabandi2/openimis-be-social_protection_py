@@ -472,3 +472,144 @@ class BeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         content = json.loads(response.content)
         internal_id = content['data']['enrollProject']['internalId']
         self.assert_mutation_success(internal_id, self.user_token)
+
+    def test_query_beneficiary_search(self):
+        # search matches on first name
+        village = create_test_village({'code': 'SearchV', 'name': 'SearchVillage'})
+        search_individual = create_individual(self.user.username, payload_override={
+            "first_name": "SearchMatch",
+            "location_id": village.id,
+        })
+        add_individual_to_benefit_plan(self.service, search_individual, self.benefit_plan)
+
+        # search matches on location name
+        child_village = create_test_village({'code': 'BeneV1', 'name': 'Village Match'})
+        village_individual = create_individual(self.user.username, payload_override={
+            "first_name": "VillagePerson",
+            "location_id": child_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, village_individual, self.benefit_plan)
+
+        # search matches on json ext field value
+        ext_individual = create_individual(self.user.username, payload_override={
+            "first_name": "JsonExtPerson",
+            'json_ext': {
+                'abc': 'json mAtch here',
+            }
+        })
+        add_individual_to_benefit_plan(self.service, ext_individual, self.benefit_plan)
+
+        response = self.query(
+            f"""
+            query {{
+              beneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                search: "match",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    individual {{
+                      firstName
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+
+        first_names = list(
+            e['node']['individual']['firstName'] for e in data['edges']
+        )
+        self.assertTrue(search_individual.first_name in first_names)
+        self.assertTrue(village_individual.first_name in first_names)
+        self.assertTrue(ext_individual.first_name in first_names)
+        self.assertEqual(data['totalCount'], 3)
+
+    def test_query_beneficiary_filter_location(self):
+        village = create_test_village({'code': 'LocV1', 'name': 'FfBLV'})
+        district_name_partial = village.parent.parent.name.lower()[-5:]
+        location_individual = create_individual(self.user.username, payload_override={
+            "first_name": "LocationPerson",
+            "location_id": village.id,
+        })
+        add_individual_to_benefit_plan(self.service, location_individual, self.benefit_plan)
+
+        another_village = create_test_village({'code': 'LocV2', 'name': 'XXZV'})
+        another_individual = create_individual(self.user.username, payload_override={
+            "first_name": "AnotherPerson",
+            "location_id": another_village.id,
+        })
+        add_individual_to_benefit_plan(self.service, another_individual, self.benefit_plan)
+
+        response = self.query(
+            f"""
+            query {{
+              beneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                location: "1:{district_name_partial}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    individual {{
+                      firstName
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+
+        first_names = list(
+            e['node']['individual']['firstName'] for e in data['edges']
+        )
+        self.assertTrue(location_individual.first_name in first_names)
+        self.assertTrue(another_individual.first_name not in first_names)
+
+        # update the query to look for "district" which would return both individuals
+        response = self.query(
+            f"""
+            query {{
+              beneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                location: "1:disTrict",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    individual {{
+                      firstName
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+
+        first_names = list(
+            e['node']['individual']['firstName'] for e in data['edges']
+        )
+        self.assertTrue(location_individual.first_name in first_names)
+        self.assertTrue(another_individual.first_name in first_names)

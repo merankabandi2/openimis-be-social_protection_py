@@ -136,7 +136,7 @@ class BeneficiaryFilter(django_filters.FilterSet):
                 if not search_term or level < 0 or level > 3:
                     continue
 
-                # Determine the lookup path based on level
+                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
                 # For level 3 (Village), we look at group's location directly
                 # For lower levels, we traverse up the parent chain
                 parent_chain = '__'.join(['parent'] * (3 - level))
@@ -239,7 +239,7 @@ class GroupBeneficiaryFilter(django_filters.FilterSet):
                 if not search_term or level < 0 or level > 3:
                     continue
 
-                # Determine the lookup path based on level
+                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
                 # For level 3 (Village), we look at group's location directly
                 # For lower levels, we traverse up the parent chain
                 parent_chain = '__'.join(['parent'] * (3 - level))
