@@ -1,5 +1,6 @@
 import graphene
 from django.contrib.auth.models import AnonymousUser
+from django.db.models import Q
 from graphene import ObjectType
 from graphene_django import DjangoObjectType
 import django_filters
@@ -7,8 +8,10 @@ from graphene_django.filter import DjangoFilterConnectionField
 
 from contribution_plan.models import PaymentPlan
 from core import prefix_filterset, ExtendedConnection
+from individual.models import GroupIndividual
 from individual.gql_queries import IndividualGQLType, GroupGQLType, \
     IndividualDataSourceUploadGQLType
+from location.models import Location
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
     Beneficiary, BenefitPlan, GroupBeneficiary, BenefitPlanDataUploadRecords,
@@ -66,6 +69,8 @@ class BenefitPlanGQLType(DjangoObjectType, JsonExtMixin):
 
 class BeneficiaryFilter(django_filters.FilterSet):
     is_eligible = django_filters.BooleanFilter(method='filter_is_eligible')
+    search = django_filters.CharFilter(method='filter_search')
+    location = django_filters.CharFilter(method='filter_location')
 
     class Meta:
         model = Beneficiary
@@ -86,6 +91,63 @@ class BeneficiaryFilter(django_filters.FilterSet):
     def filter_is_eligible(self, queryset, name, value):
         return queryset.filter(is_eligible=value)
 
+    def filter_search(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        village_matches = Location.objects.filter(
+            type='V',
+            validity_to__isnull=True,
+        ).filter(
+            Q(name__icontains=value) |
+            Q(parent__name__icontains=value) |
+            Q(parent__parent__name__icontains=value) |
+            Q(parent__parent__parent__name__icontains=value)
+        ).values_list('id', flat=True)
+
+        return queryset.filter(
+            Q(individual__first_name__icontains=value) |
+            Q(individual__last_name__icontains=value) |
+            Q(json_ext__icontains=value) |
+            Q(individual__location__id__in=village_matches)
+        )
+
+    def filter_location(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        # Split multiple level filters (format: "level1:term1,level2:term2")
+        level_filters = [f.strip() for f in value.split(',') if f.strip()]
+
+        if not level_filters:
+            return queryset
+
+        location_q = Q()
+
+        for level_filter in level_filters:
+            if ':' not in level_filter:
+                continue
+
+            try:
+                level_str, search_term = level_filter.split(':', 1)
+                level = int(level_str.strip())
+                search_term = search_term.strip()
+
+                if not search_term or level < 0 or level > 3:
+                    continue
+
+                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
+                # For level 3 (Village), we look at group's location directly
+                # For lower levels, we traverse up the parent chain
+                parent_chain = '__'.join(['parent'] * (3 - level))
+                lookup = f"individual__location__{parent_chain}__name__icontains" if parent_chain else "individual__location__name__icontains"
+
+                location_q &= Q(**{lookup: search_term})
+
+            except (ValueError, IndexError):
+                continue
+
+        return queryset.filter(location_q) if location_q else queryset
 
 class BeneficiaryGQLType(DjangoObjectType, JsonExtMixin):
     uuid = graphene.String(source='uuid')
@@ -103,6 +165,8 @@ class BeneficiaryGQLType(DjangoObjectType, JsonExtMixin):
 
 class GroupBeneficiaryFilter(django_filters.FilterSet):
     is_eligible = django_filters.BooleanFilter(method='filter_is_eligible')
+    search = django_filters.CharFilter(method='filter_search')
+    location = django_filters.CharFilter(method='filter_location')
 
     class Meta:
         model = GroupBeneficiary
@@ -122,6 +186,71 @@ class GroupBeneficiaryFilter(django_filters.FilterSet):
 
     def filter_is_eligible(self, queryset, name, value):
         return queryset.filter(is_eligible=value)
+
+    def filter_search(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        head_matches = GroupIndividual.objects.filter(
+            Q(individual__first_name__icontains=value) |
+            Q(individual__last_name__icontains=value),
+            role=GroupIndividual.Role.HEAD,
+            is_deleted=False
+        ).values_list('group_id', flat=True)
+
+        village_matches = Location.objects.filter(
+            type='V',
+            validity_to__isnull=True,
+        ).filter(
+            Q(name__icontains=value) |
+            Q(parent__name__icontains=value) |
+            Q(parent__parent__name__icontains=value) |
+            Q(parent__parent__parent__name__icontains=value)
+        ).values_list('id', flat=True)
+
+        return queryset.filter(
+            Q(group__code__icontains=value) |
+            Q(json_ext__icontains=value) |
+            Q(group__id__in=head_matches) |
+            Q(group__location__id__in=village_matches)
+        )
+
+    def filter_location(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        # Split multiple level filters (format: "level1:term1,level2:term2")
+        level_filters = [f.strip() for f in value.split(',') if f.strip()]
+
+        if not level_filters:
+            return queryset
+
+        location_q = Q()
+
+        for level_filter in level_filters:
+            if ':' not in level_filter:
+                continue
+
+            try:
+                level_str, search_term = level_filter.split(':', 1)
+                level = int(level_str.strip())
+                search_term = search_term.strip()
+
+                if not search_term or level < 0 or level > 3:
+                    continue
+
+                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
+                # For level 3 (Village), we look at group's location directly
+                # For lower levels, we traverse up the parent chain
+                parent_chain = '__'.join(['parent'] * (3 - level))
+                lookup = f"group__location__{parent_chain}__name__icontains" if parent_chain else "group__location__name__icontains"
+
+                location_q &= Q(**{lookup: search_term})
+
+            except (ValueError, IndexError):
+                continue
+
+        return queryset.filter(location_q) if location_q else queryset
 
 
 class GroupBeneficiaryGQLType(DjangoObjectType, JsonExtMixin):

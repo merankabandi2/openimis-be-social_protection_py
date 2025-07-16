@@ -407,3 +407,149 @@ class GroupBeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         content = json.loads(response.content)
         internal_id = content['data']['enrollGroupProject']['internalId']
         self.assert_mutation_success(internal_id, self.user_token)
+
+    def test_query_group_beneficiary_search(self):
+        # search matches on group code
+        _, search_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "SearchMatchGroup",
+        })
+        add_group_to_benefit_plan(self.service, search_group, self.benefit_plan)
+
+        # search matches on head last name
+        _, head_group, _ = create_group_with_individual(self.user.username, individual_override={
+            "last_name": "Named Match",
+        })
+        add_group_to_benefit_plan(self.service, head_group, self.benefit_plan)
+
+        # search matches on location name
+        child_village = create_test_village({'code': 'BeneV1', 'name': 'Village Match'})
+        _, village_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "VillageGroup",
+            "location_id": child_village.id,
+        })
+        add_group_to_benefit_plan(self.service, village_group, self.benefit_plan)
+
+        # search matches on json ext field value
+        _, ext_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "JsonExtGroup",
+            'json_ext': {
+                'abc': 'json mAtch here',
+            }
+        })
+        add_group_to_benefit_plan(self.service, ext_group, self.benefit_plan)
+
+        response = self.query(
+            f"""
+            query {{
+              groupBeneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                search: "match",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    group {{
+                      code
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+
+        group_codes = list(
+            e['node']['group']['code'] for e in data['edges']
+        )
+        self.assertTrue(search_group.code in group_codes)
+        self.assertTrue(head_group.code in group_codes)
+        self.assertTrue(village_group.code in group_codes)
+        self.assertTrue(ext_group.code in group_codes)
+        self.assertEqual(data['totalCount'], 4)
+
+    def test_query_group_beneficiary_filter_location(self):
+        village = create_test_village({'code': 'LocV1', 'name': 'FfBLV'})
+        district_name_partial = village.parent.parent.name.lower()[-5:]
+        _, location_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "LocationGroup",
+            "location_id": village.id,
+        })
+        add_group_to_benefit_plan(self.service, location_group, self.benefit_plan)
+
+        another_village = create_test_village({'code': 'LocV2', 'name': 'XXZV'})
+        _, another_group, _ = create_group_with_individual(self.user.username, group_override={
+            "code": "AnotherGroup",
+            "location_id": another_village.id,
+        })
+        add_group_to_benefit_plan(self.service, another_group, self.benefit_plan)
+
+        response = self.query(
+            f"""
+            query {{
+              groupBeneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                location: "1:{district_name_partial}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    group {{
+                      code
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+
+        group_codes = list(
+            e['node']['group']['code'] for e in data['edges']
+        )
+        self.assertTrue(location_group.code in group_codes)
+        self.assertTrue(another_group.code not in group_codes)
+
+        # update the query to look for "district" which would return both groups
+        response = self.query(
+            f"""
+            query {{
+              groupBeneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                location: "1:disTrict",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    group {{
+                      code
+                    }}
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+
+        group_codes = list(
+            e['node']['group']['code'] for e in data['edges']
+        )
+        self.assertTrue(location_group.code in group_codes)
+        self.assertTrue(another_group.code in group_codes)
