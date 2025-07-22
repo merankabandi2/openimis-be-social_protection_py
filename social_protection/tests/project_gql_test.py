@@ -168,10 +168,11 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         }
         """
 
+        project_name = "New Village Sanitation Project"
         variables = {
             "input": {
                 "benefitPlanId": str(self.benefit_plan.id),
-                "name": "New Village Sanitation Project",
+                "name": project_name,
                 "activityId": str(self.activity.id),
                 "locationId": str(self.location.uuid),
                 "targetBeneficiaries": 200,
@@ -189,10 +190,11 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         self.assertResponseNoErrors(response)
         data = json.loads(response.content)['data']['createProject']
         self.assert_mutation_success(data['internalId'], self.user_token)
+        client_mutation_id = data['clientMutationId']
 
         # Verify project is created in DB
         project_qs = Project.objects.filter(
-            name="New Village Sanitation Project",
+            name=project_name,
             benefit_plan=self.benefit_plan,
             activity=self.activity,
             location=self.location,
@@ -202,9 +204,36 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
 
         # Verify project mutation is created in DB
         project_mutation_exists = ProjectMutation.objects.filter(
-            project=project_qs.first()
+            project=project_qs.first(),
+            mutation__client_mutation_id=client_mutation_id,
         ).exists()
         self.assertTrue(project_mutation_exists)
+
+        # Verify project can be queried by client_mutation_id
+        response = self.query(
+            f"""
+            query {{
+              project(clientMutationId: "{client_mutation_id}") {{
+                totalCount
+                edges {{
+                  node {{
+                    id
+                    name
+                    status
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+
+        data = json.loads(response.content)['data']['project']
+        self.assertEqual(data['totalCount'], 1)
+
+        names_returned = [edge['node']['name'] for edge in data['edges']]
+        self.assertIn(project_name, names_returned)
 
     def test_create_project_mutation_requires_authentication(self):
         mutation = """
