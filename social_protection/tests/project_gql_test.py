@@ -7,7 +7,7 @@ from social_protection.tests.test_helpers import (
     find_or_create_activity,
     find_or_create_benefit_plan,
 )
-from social_protection.models import Project
+from social_protection.models import Project, ProjectMutation
 from location.test_helpers import create_test_village
 from django.contrib.auth import get_user_model
 import uuid
@@ -191,14 +191,20 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         self.assert_mutation_success(data['internalId'], self.user_token)
 
         # Verify project is created in DB
-        project_exists = Project.objects.filter(
+        project_qs = Project.objects.filter(
             name="New Village Sanitation Project",
             benefit_plan=self.benefit_plan,
             activity=self.activity,
             location=self.location,
             target_beneficiaries=200
+        )
+        self.assertTrue(project_qs.exists())
+
+        # Verify project mutation is created in DB
+        project_mutation_exists = ProjectMutation.objects.filter(
+            project=project_qs.first()
         ).exists()
-        self.assertTrue(project_exists)
+        self.assertTrue(project_mutation_exists)
 
     def test_create_project_mutation_requires_authentication(self):
         mutation = """

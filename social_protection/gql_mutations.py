@@ -8,7 +8,7 @@ from core.gql.gql_mutations.base_mutation import BaseHistoryModelCreateMutationM
 from core.schema import OpenIMISMutation
 from social_protection.apps import SocialProtectionConfig
 from social_protection.models import (
-    BenefitPlan, Project, Activity,
+    BenefitPlan, Project, ProjectMutation, Activity,
     Beneficiary, GroupBeneficiary, BeneficiaryStatus, BenefitPlanMutation
 )
 from social_protection.services import (
@@ -468,7 +468,7 @@ class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
     @classmethod
     def _mutate(cls, user, **data):
         if "client_mutation_id" in data:
-            data.pop("client_mutation_id")
+            client_mutation_id = data.pop('client_mutation_id', None)
         if "client_mutation_label" in data:
             data.pop("client_mutation_label")
 
@@ -479,6 +479,12 @@ class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
 
         service = ProjectService(user)
         res = service.create(data)
+
+        if client_mutation_id and res['success']:
+            project = Project.objects.get(id=res['data']['id'])
+            ProjectMutation.object_mutated(
+                user, client_mutation_id=client_mutation_id, project=project
+            )
 
         return res if not res['success'] else None
 

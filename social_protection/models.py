@@ -74,6 +74,11 @@ class Project(core_models.HistoryBusinessModel):
     working_days = models.SmallIntegerField(null=False)
 
 
+class ProjectMutation(UUIDModel, ObjectMutation):
+    project = models.ForeignKey(Project, models.DO_NOTHING, related_name='mutations')
+    mutation = models.ForeignKey(MutationLog, models.DO_NOTHING, related_name='project')
+
+
 class Beneficiary(core_models.HistoryBusinessModel):
     individual = models.ForeignKey(Individual, models.DO_NOTHING, null=False)
     benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
