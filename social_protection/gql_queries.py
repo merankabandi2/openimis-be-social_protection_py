@@ -67,10 +67,75 @@ class BenefitPlanGQLType(DjangoObjectType, JsonExtMixin):
     def resolve_has_payment_plans(self, info):
         return PaymentPlan.objects.filter(benefit_plan_id=self.id).exists()
 
-class BeneficiaryFilter(django_filters.FilterSet):
+
+class BeneficiarySharedFilterMixin:
+    location_prefix = None  # must be defined in subclass
+
+    def filter_is_eligible(self, queryset, name, value):
+        return queryset.filter(is_eligible=value)
+
+    def filter_location(self, queryset, name, value):
+        if not value or not self.location_prefix:
+            return queryset
+
+        # Split multiple level filters (format: "level1:term1,level2:term2")
+        level_filters = [f.strip() for f in value.split(',') if f.strip()]
+        if not level_filters:
+            return queryset
+
+        location_q = Q()
+
+        for level_filter in level_filters:
+            if ':' not in level_filter:
+                continue
+
+            level_str, search_term = level_filter.split(':', 1)
+            level = int(level_str.strip())
+            search_term = search_term.strip()
+
+            if not search_term or level < 0 or level > 3:
+                continue
+
+            # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
+            # For level 3 (Village), we look at group's location directly
+            # For lower levels, we traverse up the parent chain
+            parent_chain = '__'.join(['parent'] * (3 - level))
+            lookup = (
+                f"{self.location_prefix}location__{parent_chain}__name__icontains"
+                if parent_chain else f"{self.location_prefix}location__name__icontains"
+            )
+            location_q &= Q(**{lookup: search_term})
+
+        return queryset.filter(location_q) if location_q else queryset
+
+    def filter_project_allows_multiple_enrollments(self, queryset, name, value):
+        if not value:
+            return queryset
+
+        project = Project.objects.get(id=value)
+
+        if project.allows_multiple_enrollments:
+            # Exclude beneficiaries who are already enrolled in *another* project
+            # that does NOT allow multiple enrollments
+            return queryset.exclude(
+                project__isnull=False,
+                project__allows_multiple_enrollments=False
+            )
+        else:
+            # Include only beneficiaries who are NOT enrolled in *any other* project
+            # or those already enrolled in this one
+            return queryset.filter(
+                Q(project__id__isnull=True) | Q(project__id=project.id)
+            )
+
+
+class BeneficiaryFilter(django_filters.FilterSet, BeneficiarySharedFilterMixin):
+    location_prefix = "individual__"
     is_eligible = django_filters.BooleanFilter(method='filter_is_eligible')
     search = django_filters.CharFilter(method='filter_search')
     location = django_filters.CharFilter(method='filter_location')
+    project_allows_multiple_enrollments = django_filters.CharFilter(
+        method='filter_project_allows_multiple_enrollments')
 
     class Meta:
         model = Beneficiary
@@ -87,9 +152,6 @@ class BeneficiaryFilter(django_filters.FilterSet):
             "is_deleted": ["exact"],
             "version": ["exact"],
         }
-
-    def filter_is_eligible(self, queryset, name, value):
-        return queryset.filter(is_eligible=value)
 
     def filter_search(self, queryset, name, value):
         if not value:
@@ -112,43 +174,6 @@ class BeneficiaryFilter(django_filters.FilterSet):
             Q(individual__location__id__in=village_matches)
         )
 
-    def filter_location(self, queryset, name, value):
-        if not value:
-            return queryset
-
-        # Split multiple level filters (format: "level1:term1,level2:term2")
-        level_filters = [f.strip() for f in value.split(',') if f.strip()]
-
-        if not level_filters:
-            return queryset
-
-        location_q = Q()
-
-        for level_filter in level_filters:
-            if ':' not in level_filter:
-                continue
-
-            try:
-                level_str, search_term = level_filter.split(':', 1)
-                level = int(level_str.strip())
-                search_term = search_term.strip()
-
-                if not search_term or level < 0 or level > 3:
-                    continue
-
-                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
-                # For level 3 (Village), we look at group's location directly
-                # For lower levels, we traverse up the parent chain
-                parent_chain = '__'.join(['parent'] * (3 - level))
-                lookup = f"individual__location__{parent_chain}__name__icontains" if parent_chain else "individual__location__name__icontains"
-
-                location_q &= Q(**{lookup: search_term})
-
-            except (ValueError, IndexError):
-                continue
-
-        return queryset.filter(location_q) if location_q else queryset
-
 class BeneficiaryGQLType(DjangoObjectType, JsonExtMixin):
     uuid = graphene.String(source='uuid')
     is_eligible = graphene.Boolean()
@@ -163,10 +188,13 @@ class BeneficiaryGQLType(DjangoObjectType, JsonExtMixin):
         return self.is_eligible
 
 
-class GroupBeneficiaryFilter(django_filters.FilterSet):
+class GroupBeneficiaryFilter(django_filters.FilterSet, BeneficiarySharedFilterMixin):
+    location_prefix = "group__"
     is_eligible = django_filters.BooleanFilter(method='filter_is_eligible')
     search = django_filters.CharFilter(method='filter_search')
     location = django_filters.CharFilter(method='filter_location')
+    project_allows_multiple_enrollments = django_filters.CharFilter(
+        method='filter_project_allows_multiple_enrollments')
 
     class Meta:
         model = GroupBeneficiary
@@ -183,9 +211,6 @@ class GroupBeneficiaryFilter(django_filters.FilterSet):
             "is_deleted": ["exact"],
             "version": ["exact"],
         }
-
-    def filter_is_eligible(self, queryset, name, value):
-        return queryset.filter(is_eligible=value)
 
     def filter_search(self, queryset, name, value):
         if not value:
@@ -214,44 +239,6 @@ class GroupBeneficiaryFilter(django_filters.FilterSet):
             Q(group__id__in=head_matches) |
             Q(group__location__id__in=village_matches)
         )
-
-    def filter_location(self, queryset, name, value):
-        if not value:
-            return queryset
-
-        # Split multiple level filters (format: "level1:term1,level2:term2")
-        level_filters = [f.strip() for f in value.split(',') if f.strip()]
-
-        if not level_filters:
-            return queryset
-
-        location_q = Q()
-
-        for level_filter in level_filters:
-            if ':' not in level_filter:
-                continue
-
-            try:
-                level_str, search_term = level_filter.split(':', 1)
-                level = int(level_str.strip())
-                search_term = search_term.strip()
-
-                if not search_term or level < 0 or level > 3:
-                    continue
-
-                # Determine the lookup path based on level (R=0, D=1, W=2, V=3):
-                # For level 3 (Village), we look at group's location directly
-                # For lower levels, we traverse up the parent chain
-                parent_chain = '__'.join(['parent'] * (3 - level))
-                lookup = f"group__location__{parent_chain}__name__icontains" if parent_chain else "group__location__name__icontains"
-
-                location_q &= Q(**{lookup: search_term})
-
-            except (ValueError, IndexError):
-                continue
-
-        return queryset.filter(location_q) if location_q else queryset
-
 
 class GroupBeneficiaryGQLType(DjangoObjectType, JsonExtMixin):
     uuid = graphene.String(source='uuid')

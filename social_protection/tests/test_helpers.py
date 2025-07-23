@@ -109,7 +109,7 @@ def find_or_create_activity(name, username):
         activity.save(username=username)
     return activity
 
-def create_project(name, benefit_plan, username):
+def create_project(name, benefit_plan, username, allows_multiple_enrollments=False):
     activity = find_or_create_activity("Community Outreach", username)
     location = create_test_village()
 
@@ -120,6 +120,7 @@ def create_project(name, benefit_plan, username):
         location=location,
         target_beneficiaries=100,
         working_days=90,
+        allows_multiple_enrollments=allows_multiple_enrollments,
     )
     project.save(username=username)
     return project

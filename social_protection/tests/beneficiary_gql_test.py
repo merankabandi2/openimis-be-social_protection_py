@@ -613,3 +613,87 @@ class BeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         )
         self.assertTrue(location_individual.first_name in first_names)
         self.assertTrue(another_individual.first_name in first_names)
+
+    def test_query_beneficiary_allows_multiple_enrollments_filter(self):
+        # Create two projects, one that allows multiple enrollments, one that doesn't
+        multi_project = create_project(
+            'MultiProject',
+            self.benefit_plan,
+            self.user.username,
+            allows_multiple_enrollments=True,
+        )
+        exclusive_project = create_project(
+            'ExclusiveProject',
+            self.benefit_plan,
+            self.user.username,
+            allows_multiple_enrollments=False,
+        )
+
+        # Assign self.individual_2child to the exclusive project
+        self.individual_2child.beneficiary_set\
+            .filter(benefit_plan=self.benefit_plan)\
+            .update(project=exclusive_project)
+
+        # Assign self.individual_1child to the multi project
+        self.individual_1child.beneficiary_set\
+            .filter(benefit_plan=self.benefit_plan)\
+            .update(project=multi_project)
+
+        # Query using multi-enrollment project filter — should exclude 2child,
+        # include 1child & no-project
+        query_str = f"""
+            query {{
+              beneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                projectAllowsMultipleEnrollments: "{multi_project.id}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    individual {{
+                      firstName
+                    }}
+                  }}
+                }}
+              }}
+            }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+        returned_names = [e['node']['individual']['firstName'] for e in data['edges']]
+
+        self.assertIn(self.individual_1child.first_name, returned_names)  # already enrolled in this multi project
+        self.assertIn(self.individual.first_name, returned_names)         # not enrolled in any project
+        self.assertNotIn(self.individual_2child.first_name, returned_names)  # enrolled in exclusive project
+
+        # Query using exclusive project — should include only itself or unassigned
+        query_str = f"""
+            query {{
+              beneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                projectAllowsMultipleEnrollments: "{exclusive_project.id}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    individual {{
+                      firstName
+                    }}
+                  }}
+                }}
+              }}
+            }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['beneficiary']
+        returned_names = [e['node']['individual']['firstName'] for e in data['edges']]
+
+        self.assertIn(self.individual_2child.first_name, returned_names)  # already enrolled in this project
+        self.assertIn(self.individual.first_name, returned_names)         # not enrolled in any project
+        self.assertNotIn(self.individual_1child.first_name, returned_names)  # enrolled in a different project

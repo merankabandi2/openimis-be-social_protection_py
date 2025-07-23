@@ -553,3 +553,82 @@ class GroupBeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         )
         self.assertTrue(location_group.code in group_codes)
         self.assertTrue(another_group.code in group_codes)
+
+    def test_query_group_beneficiary_allows_multiple_enrollments_filter(self):
+        # Create two projects, one that allows multiple enrollments, one that does not
+        multi_project = create_project(
+            'MultiEnrollmentGroupProject',
+            self.benefit_plan,
+            self.user.username,
+            allows_multiple_enrollments=True,
+        )
+        exclusive_project = create_project(
+            'ExclusiveGroupProject',
+            self.benefit_plan,
+            self.user.username,
+            allows_multiple_enrollments=False,
+        )
+
+        # Enroll group_2child into exclusive project
+        self.group_2child.groupbeneficiary_set.filter(benefit_plan=self.benefit_plan).update(project=exclusive_project)
+
+        # Enroll group_1child into multi-enrollment project
+        self.group_1child.groupbeneficiary_set.filter(benefit_plan=self.benefit_plan).update(project=multi_project)
+
+        # Query using multi-enrollment project: should exclude group_2child, include group_1child and group_0child
+        query_str = f"""
+            query {{
+              groupBeneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                projectAllowsMultipleEnrollments: "{multi_project.id}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    group {{
+                      code
+                    }}
+                  }}
+                }}
+              }}
+            }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+        returned_codes = [e['node']['group']['code'] for e in data['edges']]
+
+        self.assertIn(self.group_1child.code, returned_codes)
+        self.assertIn(self.group_0child.code, returned_codes)
+        self.assertNotIn(self.group_2child.code, returned_codes)
+
+        # Query using exclusive project: should return only itself or unassigned
+        query_str = f"""
+            query {{
+              groupBeneficiary(
+                benefitPlan_Id: "{self.benefit_plan.uuid}",
+                projectAllowsMultipleEnrollments: "{exclusive_project.id}",
+                isDeleted: false,
+                first: 10
+              ) {{
+                totalCount
+                edges {{
+                  node {{
+                    group {{
+                      code
+                    }}
+                  }}
+                }}
+              }}
+            }}
+        """
+        response = self.query(query_str, headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        data = json.loads(response.content)['data']['groupBeneficiary']
+        returned_codes = [e['node']['group']['code'] for e in data['edges']]
+
+        self.assertIn(self.group_2child.code, returned_codes)
+        self.assertIn(self.group_0child.code, returned_codes)
+        self.assertNotIn(self.group_1child.code, returned_codes)
