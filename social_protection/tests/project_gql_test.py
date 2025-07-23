@@ -41,6 +41,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             location=cls.location,
             target_beneficiaries=100,
             working_days=120,
+            allows_multiple_enrollments=True,
         )
         cls.project_1.save(username=username)
 
@@ -177,6 +178,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                 "locationId": str(self.location.uuid),
                 "targetBeneficiaries": 200,
                 "workingDays": 90,
+                "allowsMultipleEnrollments": True,
                 "clientMutationId": "abc123"
             }
         }
@@ -198,7 +200,8 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             benefit_plan=self.benefit_plan,
             activity=self.activity,
             location=self.location,
-            target_beneficiaries=200
+            target_beneficiaries=200,
+            allows_multiple_enrollments=True,
         )
         self.assertTrue(project_qs.exists())
 
@@ -302,6 +305,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                 "workingDays": 130,
                 "activityId": str(self.another_activity.id),
                 "locationId": str(self.another_location.uuid),
+                "allowsMultipleEnrollments": False,
                 "clientMutationId": "xyz789"
             }
         }
@@ -323,6 +327,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         self.assertEqual(updated_project.working_days, 130)
         self.assertEqual(updated_project.activity.id, self.another_activity.id)
         self.assertEqual(updated_project.location.id, self.another_location.id)
+        self.assertEqual(updated_project.allows_multiple_enrollments, False)
 
     def test_update_project_mutation_requires_authentication(self):
         mutation = """

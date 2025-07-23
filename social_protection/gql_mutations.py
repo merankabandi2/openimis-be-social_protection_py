@@ -451,6 +451,7 @@ class CreateProjectInputType(OpenIMISMutation.Input):
     location_id = graphene.ID(required=True)
     target_beneficiaries = graphene.Int(required=True)
     working_days = graphene.Int(required=True)
+    allows_multiple_enrollments = graphene.Boolean(required=False)
 
 
 class CreateProjectMutation(BaseHistoryModelCreateMutationMixin, BaseMutation):
@@ -501,6 +502,7 @@ class UpdateProjectInputType(OpenIMISMutation.Input):
     location_id = graphene.ID(required=False)
     target_beneficiaries = graphene.Int(required=False)
     working_days = graphene.Int(required=False)
+    allows_multiple_enrollments = graphene.Boolean(required=False)
 
 class UpdateProjectMutation(BaseHistoryModelUpdateMutationMixin, BaseMutation):
     _mutation_class = "UpdateProjectMutation"

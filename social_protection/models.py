@@ -72,6 +72,7 @@ class Project(core_models.HistoryBusinessModel):
     location = models.ForeignKey(Location, models.DO_NOTHING, null=False)
     target_beneficiaries = models.SmallIntegerField(null=False)
     working_days = models.SmallIntegerField(null=False)
+    allows_multiple_enrollments = models.BooleanField(default=False)
 
 
 class ProjectMutation(UUIDModel, ObjectMutation):
