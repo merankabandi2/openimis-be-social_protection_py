@@ -7,7 +7,7 @@ from social_protection.tests.test_helpers import (
     find_or_create_activity,
     find_or_create_benefit_plan,
 )
-from social_protection.models import Project
+from social_protection.models import Project, ProjectMutation
 from location.test_helpers import create_test_village
 from django.contrib.auth import get_user_model
 import uuid
@@ -41,6 +41,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
             location=cls.location,
             target_beneficiaries=100,
             working_days=120,
+            allows_multiple_enrollments=True,
         )
         cls.project_1.save(username=username)
 
@@ -168,14 +169,16 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         }
         """
 
+        project_name = "New Village Sanitation Project"
         variables = {
             "input": {
                 "benefitPlanId": str(self.benefit_plan.id),
-                "name": "New Village Sanitation Project",
+                "name": project_name,
                 "activityId": str(self.activity.id),
                 "locationId": str(self.location.uuid),
                 "targetBeneficiaries": 200,
                 "workingDays": 90,
+                "allowsMultipleEnrollments": True,
                 "clientMutationId": "abc123"
             }
         }
@@ -189,16 +192,51 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         self.assertResponseNoErrors(response)
         data = json.loads(response.content)['data']['createProject']
         self.assert_mutation_success(data['internalId'], self.user_token)
+        client_mutation_id = data['clientMutationId']
 
         # Verify project is created in DB
-        project_exists = Project.objects.filter(
-            name="New Village Sanitation Project",
+        project_qs = Project.objects.filter(
+            name=project_name,
             benefit_plan=self.benefit_plan,
             activity=self.activity,
             location=self.location,
-            target_beneficiaries=200
+            target_beneficiaries=200,
+            allows_multiple_enrollments=True,
+        )
+        self.assertTrue(project_qs.exists())
+
+        # Verify project mutation is created in DB
+        project_mutation_exists = ProjectMutation.objects.filter(
+            project=project_qs.first(),
+            mutation__client_mutation_id=client_mutation_id,
         ).exists()
-        self.assertTrue(project_exists)
+        self.assertTrue(project_mutation_exists)
+
+        # Verify project can be queried by client_mutation_id
+        response = self.query(
+            f"""
+            query {{
+              project(clientMutationId: "{client_mutation_id}") {{
+                totalCount
+                edges {{
+                  node {{
+                    id
+                    name
+                    status
+                  }}
+                }}
+              }}
+            }}
+            """,
+            headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"}
+        )
+        self.assertResponseNoErrors(response)
+
+        data = json.loads(response.content)['data']['project']
+        self.assertEqual(data['totalCount'], 1)
+
+        names_returned = [edge['node']['name'] for edge in data['edges']]
+        self.assertIn(project_name, names_returned)
 
     def test_create_project_mutation_requires_authentication(self):
         mutation = """
@@ -267,6 +305,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
                 "workingDays": 130,
                 "activityId": str(self.another_activity.id),
                 "locationId": str(self.another_location.uuid),
+                "allowsMultipleEnrollments": False,
                 "clientMutationId": "xyz789"
             }
         }
@@ -288,6 +327,7 @@ class ProjectsGQLTest(PatchedOpenIMISGraphQLTestCase):
         self.assertEqual(updated_project.working_days, 130)
         self.assertEqual(updated_project.activity.id, self.another_activity.id)
         self.assertEqual(updated_project.location.id, self.another_location.id)
+        self.assertEqual(updated_project.allows_multiple_enrollments, False)
 
     def test_update_project_mutation_requires_authentication(self):
         mutation = """
