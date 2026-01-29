@@ -608,9 +608,9 @@ class BeneficiaryExcelExportService:
 
         # Define headers
         headers = [
-            'nom', 'prenom', 'province', 'commune', 'colline', 
-            'cni', 'naissance_date', 'genre', 'socialid', 'pere', 'mere',
-            'photo', 'cni_recto', 'cni_verso'
+            'nom', 'prenom', 'province', 'commune', 'colline', 'cni',
+            'naissance_date', 'genre', 'socialid', 'pere', 'mere', 'phone',
+            'photo', 'cni_recto', 'cni_verso', 'personnal_phone', 'mutwa'
         ]
         
         # Write headers
@@ -659,6 +659,9 @@ class BeneficiaryExcelExportService:
             socialid = group_beneficiary.group.code if group_beneficiary.group else ''
             pere = individual.json_ext.get('pere', '') if individual.json_ext else ''
             mere = individual.json_ext.get('mere', '') if individual.json_ext else ''
+            phone = group_beneficiary.json_ext.get('moyen_telecom').get('msisdn') if group_beneficiary.json_ext and 'moyen_telecom' in group_beneficiary.json_ext else ''
+            personnal_phone = individual.json_ext.get('telephone') if individual.json_ext and 'telephone' in individual.json_ext else ''
+            mutwa = group_beneficiary.json_ext.get('menage_mutwa') if group_beneficiary.json_ext and 'menage_mutwa' in group_beneficiary.json_ext else ''
 
             # Generate photo URLs
             individual_uuid = str(individual.id)
@@ -679,9 +682,12 @@ class BeneficiaryExcelExportService:
                 socialid,
                 pere,
                 mere,
+                phone,
                 photo_url,
                 cni_recto_url,
-                cni_verso_url
+                cni_verso_url,
+                personnal_phone,
+                mutwa
             ]
             
             for col, value in enumerate(row_data, 1):
