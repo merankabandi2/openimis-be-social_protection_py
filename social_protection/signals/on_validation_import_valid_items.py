@@ -507,7 +507,7 @@ def on_task_resolve(**kwargs):
                     SocialProtectionConfig.validation_upload_valid_items,
                     SocialProtectionConfig.validation_import_group_valid_items,
                 ]:
-            data = kwargs.get("result").get("data")
+            data = kwargs.get("result", {}).get("data")
             task = Task.objects.select_related('task_group').prefetch_related('task_group__taskexecutor_set').get(
                 id=data["task"]["id"])
             user = User.objects.get(id=data["user"]["id"])

@@ -659,7 +659,7 @@ class BeneficiaryExcelExportService:
             socialid = group_beneficiary.group.code if group_beneficiary.group else ''
             pere = individual.json_ext.get('pere', '') if individual.json_ext else ''
             mere = individual.json_ext.get('mere', '') if individual.json_ext else ''
-            phone = group_beneficiary.json_ext.get('moyen_telecom').get('msisdn') if group_beneficiary.json_ext and 'moyen_telecom' in group_beneficiary.json_ext else ''
+            phone = (group_beneficiary.json_ext.get('moyen_telecom') or {}).get('msisdn', '') if group_beneficiary.json_ext and 'moyen_telecom' in group_beneficiary.json_ext else ''
             personnal_phone = individual.json_ext.get('telephone') if individual.json_ext and 'telephone' in individual.json_ext else ''
             mutwa = group_beneficiary.json_ext.get('menage_mutwa') if group_beneficiary.json_ext and 'menage_mutwa' in group_beneficiary.json_ext else ''
 
