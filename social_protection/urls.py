@@ -8,7 +8,6 @@ from .views import (
     synchronize_data_for_reporting,
     download_beneficiary_upload,
     download_template_benefit_plan_file,
-    export_beneficiaries_excel,
 )
 
 urlpatterns = [
@@ -19,5 +18,4 @@ urlpatterns = [
     path('synchronize_data_for_reporting/', synchronize_data_for_reporting),
     path('download_beneficiary_upload_file/', download_beneficiary_upload),
     path('download_template_benefit_plan_file/', download_template_benefit_plan_file),
-    path('export_beneficiaries_excel/', export_beneficiaries_excel),
 ]
