@@ -1,4 +1,5 @@
 from unittest import mock
+from django.utils.translation import gettext
 from core.models import User
 from core.models.openimis_graphql_test_case import BaseTestContext
 from core.test_helpers import create_test_interactive_user
@@ -805,7 +806,9 @@ class GroupBeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         response = self.query(query_str)
         self.assertResponseNoErrors(response)
         data = json.loads(response.content)['data']['enrollGroupProject']
-        self.assert_mutation_error(data['internalId'], self.user_token, 'authentication_required')
+        # The mutation raises the translated messages of these keys.
+        self.assert_mutation_error(
+            data['internalId'], self.user_token, gettext('mutation.authentication_required'))
 
         # Test for user without permission (test_officer)
         response = self.query(
@@ -814,7 +817,7 @@ class GroupBeneficiaryGQLTest(PatchedOpenIMISGraphQLTestCase):
         )
         self.assertResponseNoErrors(response)
         data = json.loads(response.content)['data']['enrollGroupProject']
-        self.assert_mutation_error(data['internalId'], self.test_officer_token, 'unauthorized')
+        self.assert_mutation_error(data['internalId'], self.test_officer_token, gettext('unauthorized'))
 
         # Test for user with enrollment permission
         response = self.query(
