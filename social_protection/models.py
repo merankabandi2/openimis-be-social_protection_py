@@ -96,7 +96,9 @@ class Project(core_models.HistoryBusinessModel):
 
         return configured_perms("project", action)
 
-    row_scope = core_models.LocationScope("location")
+    # The location is picked at any level, down to a village: the scope matches
+    # every level, so a project is visible in the districts that contain it.
+    row_scope = core_models.LocationScope("location", loc_types=("R", "D", "W", "V"))
 
     benefit_plan = models.ForeignKey(BenefitPlan, models.DO_NOTHING, null=False)
     name = models.CharField(max_length=255, null=False)
