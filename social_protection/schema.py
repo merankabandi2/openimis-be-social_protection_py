@@ -337,18 +337,17 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             if not eligibility_filters:
                 return default_results
 
+            # The beneficiaries of the listed plan and status only, kept as a
+            # subquery: evaluated over every plan, the check sent the uuid of each
+            # eligible beneficiary in the database back in the list query.
             query_eligible = CustomFilterWizardStorage \
                 .build_custom_filters_queryset(
                     Query.module_name,
                     Query.object_type,
                     eligibility_filters,
-                    query
+                    query.filter(benefit_plan_id=benefit_plan_id, status=status)
                 )
-            eligible_beneficiaries = gql_optimizer.query(query_eligible, info)
-            eligible_uuids = set(
-                eligible_beneficiaries.values_list('uuid', flat=True)
-            )
-            return eligible_uuids, True
+            return query_eligible.values('uuid'), True
 
         def _annotate_is_eligible(query, eligible_uuids, check_performed):
             return query.annotate(
@@ -435,21 +434,17 @@ class Query(ExportableSocialProtectionQueryMixin, graphene.ObjectType):
             if not eligibility_filters:
                 return default_results
 
+            # The group beneficiaries of the listed plan and status only, kept as
+            # a subquery (see resolve_beneficiary).
             query_eligible = CustomFilterWizardStorage \
                 .build_custom_filters_queryset(
                     Query.module_name,
                     Query.object_type,
                     eligibility_filters,
-                    query,
+                    query.filter(benefit_plan_id=benefit_plan_id, status=status),
                     "group__groupindividuals__individual",
                 )
-            eligible_group_beneficiaries = gql_optimizer.query(
-                query_eligible, info
-            )
-            eligible_group_uuids = set(
-                eligible_group_beneficiaries.values_list('uuid', flat=True)
-            )
-            return eligible_group_uuids, True
+            return query_eligible.values('uuid'), True
 
         def _annotate_is_eligible(query, eligible_uuids, check_performed):
             return query.annotate(
