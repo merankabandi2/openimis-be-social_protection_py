@@ -25,6 +25,9 @@ from social_protection.services import BeneficiaryService
 from location.test_helpers import create_test_village
 import json
 
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
 
 class BeneficiaryGQLTest(openIMISGraphQLTestCase):
     schema = Schema(query=sp_schema.Query)
@@ -362,6 +365,42 @@ class BeneficiaryGQLTest(openIMISGraphQLTestCase):
             e['node']['isEligible'] for e in beneficiary_data['edges']
         )
         self.assertTrue(all(eligible))
+
+    def test_query_beneficiary_eligibility_scoped_to_benefit_plan(self):
+        # A status tab checks the eligibility of the plan it lists. Checked over the
+        # beneficiaries of every plan, the list query carried the uuid of each eligible
+        # beneficiary in the database: seconds per page with tens of thousands of them.
+        other_plan = create_benefit_plan(self.user.username, payload_override={
+            'code': 'SGQLOth',
+            'type': "INDIVIDUAL"
+        })
+        other_individual = create_individual(self.user.username, payload_override={
+            'first_name': 'OtherPlan',
+            'json_ext': {
+                'number_of_children': 3
+            }
+        })
+        other_uuid = add_individual_to_benefit_plan(self.service, other_individual, other_plan)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.query(f"""
+                query {{
+                  beneficiary(benefitPlan_Id: "{self.benefit_plan.uuid}", status: POTENTIAL,
+                              isDeleted: false, first: 10) {{
+                    totalCount
+                    edges {{ node {{ individual {{ firstName }} isEligible }} }}
+                  }}
+                }}""", headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)['data']['beneficiary']['edges']
+        eligibility = {e['node']['individual']['firstName']: e['node']['isEligible'] for e in edges}
+        self.assertEqual(eligibility, {
+            self.individual_2child.first_name: True,
+            self.individual_1child.first_name: False,
+        })
+        other = str(other_uuid).replace('-', '')
+        self.assertFalse(any(other in q['sql'].replace('-', '') for q in queries.captured_queries),
+                         "the eligibility check read the beneficiaries of another plan")
 
     def test_query_beneficiary_project_filter(self):
         # Enroll self.individual to a project

@@ -28,6 +28,9 @@ from social_protection.models import (
 from location.test_helpers import create_test_village
 import json
 
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+
 
 class GroupBeneficiaryGQLTest(openIMISGraphQLTestCase):
     schema = Schema(query=sp_schema.Query)
@@ -361,6 +364,45 @@ class GroupBeneficiaryGQLTest(openIMISGraphQLTestCase):
         eligible_beneficiary = beneficiary_data['edges'][0]['node']
         self.assertFalse(eligible_beneficiary['isEligible'])
         self.assertEqual(self.group_1child.code, eligible_beneficiary['group']['code'])
+
+    def test_query_group_beneficiary_eligibility_scoped_to_benefit_plan(self):
+        # A status tab checks the eligibility of the plan it lists. Checked over the
+        # group beneficiaries of every plan, the list query carried the uuid of each
+        # eligible group beneficiary in the database.
+        other_plan = create_benefit_plan(self.user.username, payload_override={
+            'code': 'GGQLOth',
+            'type': 'GROUP'
+        })
+        __, other_group, __ = create_group_with_individual(
+            self.user.username,
+            individual_override={
+                'first_name': 'OtherPlan',
+                'json_ext': {
+                    'number_of_children': 3
+                }
+            }
+        )
+        other_uuid = add_group_to_benefit_plan(self.service, other_group, other_plan)
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.query(f"""
+                query {{
+                  groupBeneficiary(benefitPlan_Id: "{self.benefit_plan.uuid}", status: POTENTIAL,
+                                   isDeleted: false, first: 10) {{
+                    totalCount
+                    edges {{ node {{ group {{ code }} isEligible }} }}
+                  }}
+                }}""", headers={"HTTP_AUTHORIZATION": f"Bearer {self.user_token}"})
+        self.assertResponseNoErrors(response)
+        edges = json.loads(response.content)['data']['groupBeneficiary']['edges']
+        eligibility = {e['node']['group']['code']: e['node']['isEligible'] for e in edges}
+        self.assertEqual(eligibility, {
+            self.group_2child.code: True,
+            self.group_1child.code: False,
+        })
+        other = str(other_uuid).replace('-', '')
+        self.assertFalse(any(other in q['sql'].replace('-', '') for q in queries.captured_queries),
+                         "the eligibility check read the group beneficiaries of another plan")
 
     def test_query_group_beneficiary_village_or_child_of_filter(self):
         child_village = create_test_village({'code': 'BeneV1', 'name': 'Beneficiary Village 1'})
