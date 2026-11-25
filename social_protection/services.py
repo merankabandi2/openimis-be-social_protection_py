@@ -111,6 +111,43 @@ class BenefitPlanService(BaseService, UpdateCheckerLogicServiceMixin):
         })
 
 
+def _would_exceed_max_active_beneficiaries(
+    beneficiary_model, benefit_plan_id, status, id=None
+):
+    """
+    True when activating one more record of `beneficiary_model` would take the
+    benefit plan to or past its `max_beneficiaries`.
+
+    For a plan with a maximum, the count runs under a row lock on the
+    BenefitPlan, so the caller must be inside `transaction.atomic()` and keep
+    it open until the activation is written; concurrent activations on the same
+    plan are then serialized. Only the BenefitPlan row is locked here, before
+    any beneficiary write, which fixes the lock order BenefitPlan -> beneficiary
+    rows. A plan without a maximum takes no lock.
+    """
+    benefit_plan = BenefitPlan.objects.get(id=benefit_plan_id)
+    if status != "ACTIVE" or benefit_plan.max_beneficiaries is None:
+        return False
+    benefit_plan = BenefitPlan.objects.select_for_update().get(
+        id=benefit_plan_id
+    )
+    max_active_beneficiaries = benefit_plan.max_beneficiaries
+    if max_active_beneficiaries is None:
+        return False
+    active_beneficiaries = beneficiary_model.objects.filter(
+        is_deleted=False,
+        benefit_plan_id=benefit_plan_id,
+        status="ACTIVE"
+    ).distinct()
+    beneficiary_already_active = (
+        active_beneficiaries.filter(id=id).exists() if id else False
+    )
+    return (
+        active_beneficiaries.count() >= max_active_beneficiaries
+        and not beneficiary_already_active
+    )
+
+
 class BeneficiaryService(BaseService, CheckerLogicServiceMixin):
     OBJECT_TYPE = Beneficiary
 
@@ -120,22 +157,9 @@ class BeneficiaryService(BaseService, CheckerLogicServiceMixin):
     def would_exceed_max_active_beneficiaries(
         self, benefit_plan_id, status, id=None
     ):
-        benefit_plan = BenefitPlan.objects.get(id=benefit_plan_id)
-        if benefit_plan and status == "ACTIVE":
-            max_active_beneficiaries = benefit_plan.max_beneficiaries
-            active_beneficiaries = Beneficiary.objects.filter(
-                is_deleted=False,
-                benefit_plan_id=benefit_plan_id,
-                status="ACTIVE"
-            ).distinct()
-            beneficiary_already_active = (
-                active_beneficiaries.filter(id=id).exists() if id else False
-            )
-            return (
-                active_beneficiaries.count() == max_active_beneficiaries
-                and not beneficiary_already_active
-            )
-        return False
+        return _would_exceed_max_active_beneficiaries(
+            Beneficiary, benefit_plan_id, status, id
+        )
 
     @register_service_signal('beneficiary_service.create')
     def create(self, obj_data):
@@ -143,14 +167,15 @@ class BeneficiaryService(BaseService, CheckerLogicServiceMixin):
             status = obj_data.get("status", None)
             benefit_plan_id = obj_data.get("benefit_plan_id", None)
 
-            if self.would_exceed_max_active_beneficiaries(
-                benefit_plan_id, status
-            ):
-                raise ValueError(
-                    "Error creating beneficiary with active status. "
-                    "Benefit plan is already at max active beneficiaries"
-                )
-            return super().create(obj_data)
+            with transaction.atomic():
+                if self.would_exceed_max_active_beneficiaries(
+                    benefit_plan_id, status
+                ):
+                    raise ValueError(
+                        "Error creating beneficiary with active status. "
+                        "Benefit plan is already at max active beneficiaries"
+                    )
+                return super().create(obj_data)
         except Exception as exc:
             return output_exception(
                 model_name=self.OBJECT_TYPE.__name__,
@@ -165,14 +190,15 @@ class BeneficiaryService(BaseService, CheckerLogicServiceMixin):
             benefit_plan_id = obj_data.get("benefit_plan_id", None)
             id = obj_data.get('id', None)
 
-            if self.would_exceed_max_active_beneficiaries(
-                benefit_plan_id, status, id
-            ):
-                raise ValueError(
-                    "Error changing beneficiary to active status. "
-                    "Benefit plan is already at max active beneficiaries"
-                )
-            return super().update(obj_data)
+            with transaction.atomic():
+                if self.would_exceed_max_active_beneficiaries(
+                    benefit_plan_id, status, id
+                ):
+                    raise ValueError(
+                        "Error changing beneficiary to active status. "
+                        "Benefit plan is already at max active beneficiaries"
+                    )
+                return super().update(obj_data)
         except Exception as exc:
             return output_exception(
                 model_name=self.OBJECT_TYPE.__name__,
@@ -212,22 +238,9 @@ class GroupBeneficiaryService(BaseService, CheckerLogicServiceMixin):
     def would_exceed_max_active_beneficiaries(
         self, benefit_plan_id, status, id=None
     ):
-        benefit_plan = BenefitPlan.objects.get(id=benefit_plan_id)
-        if benefit_plan and status == "ACTIVE":
-            max_active_beneficiaries = benefit_plan.max_beneficiaries
-            active_beneficiaries = GroupBeneficiary.objects.filter(
-                is_deleted=False,
-                benefit_plan_id=benefit_plan_id,
-                status="ACTIVE"
-            ).distinct()
-            beneficiary_already_active = (
-                active_beneficiaries.filter(id=id).exists() if id else False
-            )
-            return (
-                active_beneficiaries.count() == max_active_beneficiaries
-                and not beneficiary_already_active
-            )
-        return False
+        return _would_exceed_max_active_beneficiaries(
+            GroupBeneficiary, benefit_plan_id, status, id
+        )
 
     @register_service_signal('group_beneficiary_service.create')
     def create(self, obj_data):
@@ -235,14 +248,15 @@ class GroupBeneficiaryService(BaseService, CheckerLogicServiceMixin):
             status = obj_data.get("status", None)
             benefit_plan_id = obj_data.get("benefit_plan_id", None)
 
-            if self.would_exceed_max_active_beneficiaries(
-                benefit_plan_id, status
-            ):
-                raise ValueError(
-                    "Error creating beneficiary with active status. "
-                    "Benefit plan is already at max active beneficiaries"
-                )
-            return super().create(obj_data)
+            with transaction.atomic():
+                if self.would_exceed_max_active_beneficiaries(
+                    benefit_plan_id, status
+                ):
+                    raise ValueError(
+                        "Error creating beneficiary with active status. "
+                        "Benefit plan is already at max active beneficiaries"
+                    )
+                return super().create(obj_data)
         except Exception as exc:
             return output_exception(
                 model_name=self.OBJECT_TYPE.__name__,
@@ -257,14 +271,15 @@ class GroupBeneficiaryService(BaseService, CheckerLogicServiceMixin):
             benefit_plan_id = obj_data.get("benefit_plan_id", None)
             id = obj_data.get('id', None)
 
-            if self.would_exceed_max_active_beneficiaries(
-                benefit_plan_id, status, id
-            ):
-                raise ValueError(
-                    "Error changing beneficiary to active status. "
-                    "Benefit plan is already at max active beneficiaries"
-                )
-            return super().update(obj_data)
+            with transaction.atomic():
+                if self.would_exceed_max_active_beneficiaries(
+                    benefit_plan_id, status, id
+                ):
+                    raise ValueError(
+                        "Error changing beneficiary to active status. "
+                        "Benefit plan is already at max active beneficiaries"
+                    )
+                return super().update(obj_data)
         except Exception as exc:
             return output_exception(
                 model_name=self.OBJECT_TYPE.__name__,
